@@ -30,7 +30,7 @@ if getattr(sys, "frozen", False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-APP_VERSION = "2.2.3"
+APP_VERSION = "2.2.4"
 # Откуда проверять обновления: JSON вида {"version": "2.3.0", "notes": "...", "setup": "https://.../Whispy-Setup-2.3.0.exe",
 # "portable": "https://.../Whispy.exe"}. Поменяй на свой репозиторий или свой сервер.
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
@@ -1609,7 +1609,14 @@ class App(ctk.CTk):
         except Exception:
             pass
         try:
-            self.scroll._parent_canvas.yview_scroll(int(-e.delta / 40), "units")
+            cv = self.scroll._parent_canvas
+            bbox = cv.bbox("all")
+            total = (bbox[3] - bbox[1]) if bbox else 0
+            if total <= 0:
+                return
+            step_px = 250 * (-e.delta / 120)  # один щелчок ≈ 250 px
+            lo, _ = cv.yview()
+            cv.yview_moveto(max(0.0, lo + step_px / total))
         except Exception:
             pass
 
