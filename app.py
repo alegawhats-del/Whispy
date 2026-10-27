@@ -30,7 +30,7 @@ if getattr(sys, "frozen", False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-APP_VERSION = "2.2.4"
+APP_VERSION = "2.2.5"
 # Откуда проверять обновления: JSON вида {"version": "2.3.0", "notes": "...", "setup": "https://.../Whispy-Setup-2.3.0.exe",
 # "portable": "https://.../Whispy.exe"}. Поменяй на свой репозиторий или свой сервер.
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
@@ -1041,6 +1041,8 @@ class Dropdown(tk.Toplevel):
         x = anchor.winfo_rootx()
         yy = anchor.winfo_rooty() + anchor.winfo_height() + 6
         self.geometry(f"{width}x{rows}+{x}+{yy}")
+        self.deiconify()
+        self.lift()
         self.bind("<Escape>", lambda e: self.close())
         self.after(10, self.focus_force)
         self.bind("<FocusOut>", lambda e: self.after(80, self._check_focus))
@@ -1135,13 +1137,36 @@ class Dialog(tk.Toplevel):
         self.update_idletasks()
         mx, my = master.winfo_rootx(), master.winfo_rooty()
         mw, mh = master.winfo_width(), master.winfo_height()
-        self.geometry(f"{W}x{H}+{mx + (mw - W) // 2}+{my + (mh - H) // 2}")
-        self.transient(master)
-        self.grab_set()
-        if self.entry:
-            self.after(50, self.entry.focus_set)
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        x = min(max(0, mx + (mw - W) // 2), max(0, sw - W))
+        y = min(max(0, my + (mh - H) // 2), max(0, sh - H))
+        self.geometry(f"{W}x{H}+{x}+{y}")
+        self.deiconify()
+        self.lift()
+        self.after(60, self._arm)
+        self.after(1500, self._watchdog)
+
+    def _arm(self):
+        """Захват ввода только когда окно реально на экране — иначе интерфейс «повиснет»."""
+        if not self.winfo_exists():
+            return
+        if self.winfo_viewable():
+            try:
+                self.grab_set()
+            except Exception:
+                pass
+            if self.entry:
+                self.entry.focus_set()
+            else:
+                self.focus_force()
         else:
-            self.after(50, self.focus_force)
+            self.lift()
+            self.after(60, self._arm)
+
+    def _watchdog(self):
+        if self.winfo_exists() and not self.winfo_viewable():
+            self.result = None if self.entry else False
+            self.destroy()
 
     def _drag_start(self, e):
         self._dx, self._dy = e.x_root - self.winfo_x(), e.y_root - self.winfo_y()
