@@ -1,0 +1,5 @@
+customtkinter>=5.2.2
+yt-dlp>=2025.1.1
+faster-whisper>=1.1.0
+pillow>=10.0
+pyinstaller>=6.6

@@ -1,0 +1,14 @@
+venv/
+build/
+dist/
+installer_out/
+__pycache__/
+*.spec
+whispy.ico
+whispy.png
+installed.flag
+settings.json
+models/
+temp/
+updates/
+Транскрипты/
