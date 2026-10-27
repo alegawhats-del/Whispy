@@ -2,6 +2,5 @@
   "version": "2.2.0",
   "date": "2026-10-27",
   "notes": "• Установщик, автообновление\n• Адаптивная вёрстка, панель меню, свои окна\n• ИИ-ассистент: тезисы, таблица, блок-схема, презентация, инфографика",
-  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.2.0/Whispy-Setup-2.2.0.exe",
-  "portable": "https://github.com/alegawhats-del/Whispy/releases/download/v2.2.0/Whispy.exe"
+  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.2.0/Whispy-Setup-2.2.0.exe"
 }
