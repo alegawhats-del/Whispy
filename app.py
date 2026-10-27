@@ -30,7 +30,7 @@ if getattr(sys, "frozen", False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-APP_VERSION = "2.2.1"
+APP_VERSION = "2.2.2"
 # Откуда проверять обновления: JSON вида {"version": "2.3.0", "notes": "...", "setup": "https://.../Whispy-Setup-2.3.0.exe",
 # "portable": "https://.../Whispy.exe"}. Поменяй на свой репозиторий или свой сервер.
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
@@ -1568,6 +1568,29 @@ class App(ctk.CTk):
         self.path_lbl = bottom.add(ctk.CTkLabel(bottom, text=os.path.relpath(self.last_path, BASE_DIR)
                                                 if self.last_path else "", font=f_small, text_color=T["MUTED"]))
         self.refresh_buttons()
+        # единый скролл колесом: над любым элементом едет страница, над длинным текстом — сам текст
+        self.unbind_all("<MouseWheel>")
+        self.bind_all("<MouseWheel>", self._wheel)
+
+    def _wheel(self, e):
+        try:
+            w = self.winfo_containing(e.x_root, e.y_root)
+        except Exception:
+            return
+        if w is None or w.winfo_toplevel() is not self:
+            return
+        try:
+            tb = self.textbox._textbox
+            if w is tb or str(w).startswith(str(self.textbox)):
+                lo, hi = tb.yview()
+                if not (lo <= 0.0 and hi >= 1.0):
+                    return  # текст прокручивается сам
+        except Exception:
+            pass
+        try:
+            self.scroll._parent_canvas.yview_scroll(int(-e.delta / 40), "units")
+        except Exception:
+            pass
 
     def _draw_hero(self, e):
         w, h = max(e.width, 200), 140
