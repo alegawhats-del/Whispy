@@ -1,6 +1,6 @@
 {
-  "version": "2.2.4",
+  "version": "2.2.5",
   "date": "2026-10-27",
-  "notes": "• Быстрый скролл колесом по всему окну\n• «Стоп» всегда освобождает интерфейс, проверка места на диске\n• Ключ API по умолчанию, фикс выпадающих меню",
-  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.2.4/Whispy-Setup-2.2.4.exe"
+  "notes": "• Исправлено зависание после «Проверить обновления» (невидимое модальное окно)\n• Диалоги всегда показываются в пределах экрана",
+  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.2.5/Whispy-Setup-2.2.5.exe"
 }
