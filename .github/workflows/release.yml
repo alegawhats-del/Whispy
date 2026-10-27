@@ -2,7 +2,9 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: ["main"]
+    paths-ignore: ["version.json", "README.md", "RELEASE.md"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -26,16 +28,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Read version
+      - name: Read version, skip if already released
         id: ver
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $v = python get_version.py
-          $tag = "${{ github.ref_name }}".TrimStart("v")
-          if ($v -ne $tag) { Write-Error "APP_VERSION=$v, а тег=$tag — должны совпадать"; exit 1 }
           "ver=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          gh release view "v$v" --repo ${{ github.repository }} 2>$null
+          if ($LASTEXITCODE -eq 0) { "exists=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append; "Release v$v уже есть — пропускаю" }
+          else { "exists=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append }
 
       - name: Default API key (from secret)
+        if: steps.ver.outputs.exists == 'false'
         shell: pwsh
         env:
           KEY: ${{ secrets.DEFAULT_API_KEY }}
@@ -43,9 +49,11 @@ jobs:
           if ($env:KEY) { Set-Content -Path default_key.txt -Value $env:KEY -NoNewline; "key: embedded" } else { "key: none" }
 
       - name: Icon
+        if: steps.ver.outputs.exists == 'false'
         run: python make_icon.py
 
       - name: Build exe (PyInstaller)
+        if: steps.ver.outputs.exists == 'false'
         shell: pwsh
         run: |
           $extra = @()
@@ -59,6 +67,7 @@ jobs:
           if (-not (Test-Path dist/Whispy/Whispy.exe)) { Write-Error "exe not built"; exit 1 }
 
       - name: Inno Setup
+        if: steps.ver.outputs.exists == 'false'
         shell: pwsh
         run: |
           if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
@@ -67,6 +76,7 @@ jobs:
           Get-ChildItem installer_out
 
       - name: Release notes
+        if: steps.ver.outputs.exists == 'false'
         id: notes
         shell: pwsh
         run: |
@@ -74,13 +84,17 @@ jobs:
           "body<<EOF`n$body`nEOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Publish GitHub Release
+        if: steps.ver.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.ver.outputs.ver }}
+          target_commitish: ${{ github.sha }}
           name: Whispy ${{ steps.ver.outputs.ver }}
           body: ${{ steps.notes.outputs.body }}
           files: installer_out/Whispy-Setup-${{ steps.ver.outputs.ver }}.exe
 
       - name: Update version.json on main
+        if: steps.ver.outputs.exists == 'false'
         shell: pwsh
         run: |
           git config user.name "github-actions[bot]"
