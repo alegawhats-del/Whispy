@@ -30,7 +30,7 @@ if getattr(sys, "frozen", False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-APP_VERSION = "2.2.2"
+APP_VERSION = "2.2.3"
 # Откуда проверять обновления: JSON вида {"version": "2.3.0", "notes": "...", "setup": "https://.../Whispy-Setup-2.3.0.exe",
 # "portable": "https://.../Whispy.exe"}. Поменяй на свой репозиторий или свой сервер.
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
@@ -194,6 +194,8 @@ def human_error(exc: Exception) -> str:
         return "Это прямой эфир или премьера — дождитесь окончания трансляции."
     if "urlopen" in low or "getaddrinfo" in low or "timed out" in low or "connection" in low:
         return "Нет связи с YouTube. Проверьте интернет."
+    if "errno 28" in low or "no space left" in low or "not enough space" in low or "недостаточно места" in low:
+        return "Закончилось место на диске. Освободи место (или выбери модель поменьше) и запусти снова."
     if "cuda" in low or "cudnn" in low or "cublas" in low:
         return "Проблема с видеокартой/CUDA: " + text[:200] + "\nПереключите устройство на CPU."
     return text[:400]
@@ -559,9 +561,25 @@ class Cancelled(Exception):
     pass
 
 
+MODEL_SIZE_GB = {"small": 0.6, "medium": 1.8, "large-v3": 3.3}
+
+
+def model_cached(name: str) -> bool:
+    return os.path.isdir(os.path.join(MODELS_DIR, f"models--Systran--faster-whisper-{name}", "snapshots"))
+
+
+def check_disk(model_name: str, audio_gb: float = 0.3):
+    free = shutil.disk_usage(MODELS_DIR).free / 1e9
+    need = audio_gb + (0 if model_cached(model_name) else MODEL_SIZE_GB.get(model_name, 2.0))
+    if free < need:
+        raise RuntimeError(f"Мало места на диске: нужно около {need:.1f} ГБ, свободно {free:.1f} ГБ. "
+                           f"Освободи место или выбери модель поменьше.")
+
+
 class Worker(threading.Thread):
-    def __init__(self, url, lang, model_name, device_choice, q):
+    def __init__(self, url, lang, model_name, device_choice, q, gen=0):
         super().__init__(daemon=True)
+        self.gen = gen
         self.url = url
         self.lang = lang
         self.model_name = model_name
@@ -571,6 +589,7 @@ class Worker(threading.Thread):
         self.lines = []
 
     def emit(self, kind, **data):
+        data["gen"] = self.gen
         self.q.put((kind, data))
 
     def status(self, stage, text):
@@ -615,6 +634,7 @@ class Worker(threading.Thread):
             got = self.try_subtitles(info)
 
             if not got:
+                check_disk(self.model_name)
                 self.status("Скачивание", "Субтитров нет — скачиваю аудио…")
                 audio_path = self.download_audio(info)
                 self.check_cancel()
@@ -1195,6 +1215,7 @@ class App(ctk.CTk):
         self.mono = "Cascadia Code" if font_exists("Cascadia Code") else "Consolas"
         self.q = queue.Queue()
         self.worker = None
+        self.gen = 0
         self.ai_worker = None
         self.last_path = None
         self.last_title = ""
@@ -1664,16 +1685,23 @@ class App(ctk.CTk):
         self.chip.set("Старт", "work")
         self.wave.start()
         self.status_lbl.configure(text="Подключаюсь к YouTube…", text_color=T["TEXT"])
+        self.gen += 1
         self.worker = Worker(url=url, lang=LANGS[self.lang_var.get()], model_name=self.model_var.get(),
-                             device_choice=DEVICES[self.device_var.get()], q=self.q)
+                             device_choice=DEVICES[self.device_var.get()], q=self.q, gen=self.gen)
         self.worker.start()
         self.refresh_buttons()
 
     def stop(self):
         if self.worker and self.worker.is_alive():
             self.worker.cancel.set()
-            self.cancel_btn.configure(state="disabled")
-            self.status_lbl.configure(text="Останавливаю…")
+        # старый поток дальше игнорируем — интерфейс свободен сразу
+        self.gen += 1
+        self.worker = None
+        self.wave.stop()
+        self.chip.set("Отменено", "idle")
+        self.status_lbl.configure(text="Остановлено. Можно запускать заново.", text_color=T["TEXT"])
+        self.cancel_btn.configure(state="disabled")
+        self.refresh_buttons()
 
     def finish_ui(self):
         self.cancel_btn.configure(state="disabled")
@@ -1775,6 +1803,8 @@ class App(ctk.CTk):
         try:
             while True:
                 kind, d = self.q.get_nowait()
+                if "gen" in d and d["gen"] != self.gen:
+                    continue  # событие от уже остановленной задачи
                 if kind == "status":
                     stage = d["stage"]
                     kindc = {"Готово": "ok", "Ошибка": "err", "Отменено": "idle"}.get(stage, "work")
