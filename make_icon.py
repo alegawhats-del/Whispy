@@ -52,4 +52,4 @@ if __name__ == "__main__":
     imgs = [make(sz) for sz in sizes]
     imgs[0].save("whispy.ico", format="ICO", sizes=[(sz, sz) for sz in sizes], append_images=imgs[1:])
     imgs[0].save("whispy.png")
-    print("whispy.ico создан")
+    print("whispy.ico OK")
