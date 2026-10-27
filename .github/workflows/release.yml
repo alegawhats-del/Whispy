@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Read version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = python get_version.py
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          if ($v -ne $tag) { Write-Error "APP_VERSION=$v, а тег=$tag — должны совпадать"; exit 1 }
+          "ver=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Default API key (from secret)
+        shell: pwsh
+        env:
+          KEY: ${{ secrets.DEFAULT_API_KEY }}
+        run: |
+          if ($env:KEY) { Set-Content -Path default_key.txt -Value $env:KEY -NoNewline; "key: embedded" } else { "key: none" }
+
+      - name: Icon
+        run: python make_icon.py
+
+      - name: Build exe (PyInstaller)
+        shell: pwsh
+        run: |
+          $extra = @()
+          if (Test-Path default_key.txt) { $extra += @("--add-data", "default_key.txt;.") }
+          pyinstaller --noconfirm --clean --windowed --onedir `
+            --name Whispy --icon whispy.ico --add-data "whispy.ico;." @extra `
+            --collect-all customtkinter --collect-all yt_dlp --collect-all faster_whisper `
+            --collect-all ctranslate2 --collect-all av --collect-all tokenizers `
+            --collect-all huggingface_hub --collect-all onnxruntime `
+            --hidden-import PIL._tkinter_finder app.py
+          if (-not (Test-Path dist/Whispy/Whispy.exe)) { Write-Error "exe not built"; exit 1 }
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+          Set-Content -Path installed.flag -Value "installed"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /Q /DAppVersion=${{ steps.ver.outputs.ver }} installer.iss
+          Get-ChildItem installer_out
+
+      - name: Release notes
+        id: notes
+        shell: pwsh
+        run: |
+          $body = Get-Content NOTES.md -Raw
+          "body<<EOF`n$body`nEOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Whispy ${{ steps.ver.outputs.ver }}
+          body: ${{ steps.notes.outputs.body }}
+          files: installer_out/Whispy-Setup-${{ steps.ver.outputs.ver }}.exe
+
+      - name: Update version.json on main
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          python bump_manifest.py ${{ steps.ver.outputs.ver }}
+          git add version.json
+          git commit -m "version.json -> ${{ steps.ver.outputs.ver }} [skip ci]"
+          git push origin main
