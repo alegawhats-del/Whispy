@@ -30,7 +30,7 @@ if getattr(sys, "frozen", False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.2.1"
 # Откуда проверять обновления: JSON вида {"version": "2.3.0", "notes": "...", "setup": "https://.../Whispy-Setup-2.3.0.exe",
 # "portable": "https://.../Whispy.exe"}. Поменяй на свой репозиторий или свой сервер.
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
@@ -243,6 +243,23 @@ def save_settings(d: dict):
             json.dump(d, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
+
+
+def load_default_key() -> str:
+    """Ключ API, зашитый в сборку: файл default_key.txt рядом с exe / в _internal / в _MEIPASS."""
+    import base64
+    for root in (BASE_DIR, getattr(sys, "_MEIPASS", ""), os.path.join(BASE_DIR, "_internal")):
+        p = os.path.join(root, "default_key.txt") if root else ""
+        if p and os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    raw = f.read().strip()
+                if raw.startswith("b64:"):
+                    raw = base64.b64decode(raw[4:]).decode("utf-8").strip()
+                return raw
+            except Exception:
+                return ""
+    return ""
 
 
 def find_icon():
@@ -940,7 +957,13 @@ def _transparent(win):
 
 
 def card_image(w, h, radius=18, fill=None, border=None, bg=KEY_COLOR):
-    return flat_pill(w, h, fill or T["CARD"], bg, radius=radius, border=border or T["BORDER"])
+    """Скруглённая карточка для окон без рамки: края сглажены к цвету карточки, а не к прозрачному ключу,
+    иначе по контуру появляется тёмная кайма."""
+    img = flat_pill(w, h, fill or T["CARD"], fill or T["CARD"], radius=radius, border=border or T["BORDER"])
+    mask = rounded_mask(w, h, radius).point(lambda p: 255 if p >= 128 else 0)
+    out = Image.new("RGB", (w, h), hex_rgb(bg))
+    out.paste(img, (0, 0), mask)
+    return out
 
 
 class Dropdown(tk.Toplevel):
@@ -948,6 +971,7 @@ class Dropdown(tk.Toplevel):
 
     def __init__(self, master, anchor, items, width=250):
         super().__init__(master)
+        self.anchor = anchor
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         _transparent(self)
@@ -1010,6 +1034,8 @@ class Dropdown(tk.Toplevel):
 
     def close(self):
         try:
+            if hasattr(self.anchor, "_hover"):
+                self.anchor._hover(False)
             self.destroy()
         except Exception:
             pass
@@ -1183,7 +1209,7 @@ class App(ctk.CTk):
         self.model_var = tk.StringVar(value=self.settings.get("model", "medium"))
         self.device_var = tk.StringVar(value=self.settings.get("device", "Авто"))
         self.ai_var = tk.StringVar(value=self.settings.get("ai_type", "Тезисы"))
-        self.api_key = self.settings.get("api_key", "")
+        self.api_key = self.settings.get("api_key") or load_default_key()
 
         self.build()
         self.bind_all("<Control-KeyPress>", self._hotkeys, add="+")
