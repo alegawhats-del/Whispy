@@ -23,7 +23,7 @@ if "%ISCC%"=="" (
 )
 
 call venv\Scripts\activate.bat
-for /f "delims=" %%v in ('python -c "import re;print(re.search(r'APP_VERSION = \"(.*?)\"',open('app.py',encoding='utf-8').read()).group(1))"') do set VER=%%v
+for /f "delims=" %%v in ('python get_version.py') do set VER=%%v
 echo Version from app.py: %VER%
 
 echo installed> installed.flag
