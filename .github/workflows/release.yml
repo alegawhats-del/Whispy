@@ -34,11 +34,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $ErrorActionPreference = "Continue"
           $v = python get_version.py
           "ver=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          gh release view "v$v" --repo ${{ github.repository }} 2>$null
-          if ($LASTEXITCODE -eq 0) { "exists=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append; "Release v$v уже есть — пропускаю" }
-          else { "exists=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append }
+          $null = gh release view "v$v" --repo ${{ github.repository }} 2>&1
+          if ($LASTEXITCODE -eq 0) { "exists=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append; "Release v$v already exists - skip" }
+          else { "exists=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append; "Will build v$v" }
+          exit 0
 
       - name: Default API key (from secret)
         if: steps.ver.outputs.exists == 'false'
