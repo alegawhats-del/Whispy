@@ -65,8 +65,8 @@ jobs:
           $extra = @()
           if (Test-Path default_key.txt) { $extra += @("--add-data", "default_key.txt;.") }
           pyinstaller --noconfirm --clean --windowed --onedir `
-            --name Whispy --icon whispy.ico --add-data "whispy.ico;." @extra `
-            --collect-all customtkinter --collect-all yt_dlp --collect-all faster_whisper `
+            --name Whispy --icon whispy.ico --add-data "whispy.ico;." --add-data "docs;docs" @extra `
+            --collect-all customtkinter --collect-all yt_dlp --collect-all faster_whisper --collect-all sherpa_onnx --collect-all numpy `
             --collect-all ctranslate2 --collect-all av --collect-all tokenizers `
             --collect-all huggingface_hub --collect-all onnxruntime `
             --hidden-import PIL._tkinter_finder app.py

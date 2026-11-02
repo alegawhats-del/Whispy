@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Whispy — руководство</title>
+<style>
+:root{--bg:#0E0913;--card:#18111F;--border:#2A1E35;--field:#221829;--text:#F5EEF9;--muted:#8C7E98;--pink:#FF5FB4;--violet:#8B5CF6;--ok:#4ADE9A}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 "Segoe UI",system-ui,sans-serif}
+body::before{content:"";position:fixed;inset:-20% -10% auto -10%;height:60vh;background:radial-gradient(60% 60% at 70% 30%,rgba(255,95,180,.28),transparent 70%),radial-gradient(50% 60% at 90% 70%,rgba(139,92,246,.30),transparent 70%);filter:blur(40px);z-index:-1;pointer-events:none}
+main{max-width:980px;margin:0 auto;padding:56px 24px 80px}
+h1{font-size:44px;line-height:1.1;margin:0 0 8px;background:linear-gradient(90deg,#fff,#CFC3DB);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{color:var(--muted);font-size:18px;margin:0 0 36px}
+h2{font-size:24px;margin:48px 0 14px;padding-left:14px;border-left:3px solid var(--pink)}
+.step{display:grid;grid-template-columns:44px 1fr;gap:16px;margin:18px 0;padding:18px 20px;background:var(--card);border:1px solid var(--border);border-radius:18px}
+.n{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#fff;background:linear-gradient(135deg,var(--pink),var(--violet))}
+.step h3{margin:6px 0 6px;font-size:17px}.step p{margin:0 0 8px;color:#D8CDE3}
+img.shot{display:block;max-width:100%;border-radius:14px;border:1px solid var(--border);margin:10px 0 4px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+.cap{color:var(--muted);font-size:12px;margin:0 0 6px}
+kbd{font:600 12px Consolas,monospace;background:var(--field);border:1px solid var(--border);border-radius:6px;padding:2px 7px}
+.tip{margin:14px 0;padding:14px 18px;border-radius:14px;background:linear-gradient(135deg,rgba(255,95,180,.14),rgba(139,92,246,.14));border:1px solid #4A3460}
+table{width:100%;border-collapse:separate;border-spacing:0;background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin:12px 0}
+th{text-align:left;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--field);padding:10px 14px}
+td{padding:10px 14px;border-top:1px solid var(--border);vertical-align:top}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}.toc a{color:#CFC3DB;text-decoration:none;font-size:13px;font-weight:600;background:var(--field);border:1px solid var(--border);border-radius:999px;padding:6px 12px}
+.toc a:hover{border-color:var(--pink);color:var(--pink)}
+footer{margin-top:48px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:16px}
+</style></head>
+<body><main>
+<h1>Whispy — руководство</h1>
+<p class="lead">YouTube-ссылка → текст с таймкодами и спикерами → главное через ИИ. Всё по шагам, с картинками.</p>
+<div class="toc">
+<a href="#start">Первый запуск</a><a href="#link">Получить текст</a><a href="#settings">Настройки</a><a href="#speakers">Спикеры</a>
+<a href="#files">Мои файлы</a><a href="#ai">ИИ-ассистент</a><a href="#gpu">Видеокарта NVIDIA</a><a href="#updates">Обновления</a><a href="#faq">Если что-то не так</a>
+</div>
+
+<h2 id="start">Первый запуск</h2>
+<div class="step"><div class="n">1</div><div>
+<h3>Установи и открой программу</h3>
+<p>Запусти <b>Whispy-Setup-x.x.x.exe</b>. Если Windows покажет синее окно SmartScreen — нажми <b>Подробнее → Выполнить в любом случае</b> (программа без цифровой подписи, это нормально). Ярлык появится на рабочем столе и в Пуске.</p>
+<img class="shot" src="img/main.png" alt="Главное окно Whispy"><p class="cap">Главное окно: сверху меню, затем шапка, карточка ссылки, прогресс и текст.</p>
+</div></div>
+<div class="step"><div class="n">2</div><div>
+<h3>Дай программе докачать модель</h3>
+<p>При первом запуске Whispy сама скачивает модель распознавания <b>medium</b> (≈1,5 ГБ) в фоне — под полосой прогресса видно процент. Пока качается, можно работать с видео, у которых есть субтитры: они обрабатываются без модели за секунды. Если хочешь запустить загрузку вручную: <b>Помощь → Скачать модель заранее</b>.</p>
+</div></div>
+
+<h2 id="link">Получить текст из видео</h2>
+<div class="step"><div class="n">1</div><div>
+<h3>Вставь ссылку</h3>
+<p>Скопируй адрес видео в браузере, нажми в поле и <kbd>Ctrl</kbd>+<kbd>V</kbd> (работает в русской раскладке тоже) — или кнопку <b>Вставить</b>.</p>
+<img class="shot" src="img/link.png" alt="Карточка ссылки и настроек"><p class="cap">Поле ссылки, кнопка «Вставить», главная кнопка и переключатели настроек.</p>
+</div></div>
+<div class="step"><div class="n">2</div><div>
+<h3>Нажми «Получить текст ✦»</h3>
+<p>Сначала программа ищет готовые субтитры YouTube — если они есть, текст появится за секунды. Если нет — скачивает аудио и распознаёт сама. Этап и проценты видны в карточке прогресса, справа — кнопка <b>Стоп</b>.</p>
+<img class="shot" src="img/progress.png" alt="Карточка прогресса"><p class="cap">Статус «Распознавание», сколько уже готово из общей длины, примерно сколько осталось.</p>
+</div></div>
+<div class="step"><div class="n">3</div><div>
+<h3>Читай текст по мере появления</h3>
+<p>Строки приходят вживую, с розовыми таймкодами <b>[чч:мм:сс]</b>. Файл <b>.txt</b> сохраняется автоматически — путь показан внизу, кнопки <b>Копировать всё</b>, <b>Открыть файл</b>, <b>Показать в папке</b>.</p>
+<img class="shot" src="img/text.png" alt="Текст с таймкодами"><p class="cap">Так выглядит готовый транскрипт часового подкаста.</p>
+</div></div>
+
+<h2 id="settings">Настройки</h2>
+<table><tr><th>Переключатель</th><th>Что делает</th><th>Совет</th></tr>
+<tr><td><b>Язык</b></td><td>Язык речи в видео. «Авто» — определяется сам.</td><td>Для русских видео оставь «Русский» — так точнее и быстрее.</td></tr>
+<tr><td><b>Модель</b></td><td>small — быстро, medium — баланс, large-v3 — максимум качества.</td><td>medium по умолчанию. large-v3 без видеокарты NVIDIA будет считать часами.</td></tr>
+<tr><td><b>Устройство</b></td><td>Авто / NVIDIA / CPU.</td><td>Оставь «Авто». Если есть NVIDIA — см. раздел ниже.</td></tr>
+<tr><td><b>Режим</b></td><td>«Быстро» — в 2–3 раза быстрее, «Точно» — чуть аккуратнее.</td><td>Для подкастов и лекций хватает «Быстро».</td></tr>
+<tr><td><b>Спикеры</b></td><td>Выкл / Авто / 2 / 3 / 4 — определяет, кто говорит.</td><td>Если знаешь, сколько человек в разговоре — поставь число, так точнее.</td></tr>
+</table>
+<div class="tip">Все настройки запоминаются. При следующем запуске будет то, что ты выбрала в прошлый раз.</div>
+
+<h2 id="speakers">Спикеры — кто говорит</h2>
+<div class="step"><div class="n">1</div><div>
+<h3>Включи «Спикеры» до запуска</h3>
+<p>Программа скачает один раз маленькую модель голосов (28 МБ), после распознавания сравнит голос в каждой реплике и подпишет строки: <b>Спикер 1</b>, <b>Спикер 2</b>… — каждый своим цветом. В файле строки выглядят так: <code>[00:12:30] Спикер 2: текст</code>.</p>
+<p>Работает и когда текст взят из субтитров YouTube — тогда аудио скачивается только ради голосов.</p>
+</div></div>
+
+<h2 id="files">Мои файлы</h2>
+<div class="step"><div class="n">1</div><div>
+<h3>Кнопка «▤ Мои файлы» сверху справа</h3>
+<p>Откроется список всего, что сохранила программа: транскрипты (.txt) и результаты ИИ (.html). Для каждого — <b>Открыть</b>, <b>В папке</b> (покажет файл в проводнике), для текста — <b>Копировать</b>. Сами файлы лежат в <b>Документы → Whispy</b>.</p>
+</div></div>
+
+<h2 id="ai">ИИ-ассистент — главное из видео</h2>
+<div class="step"><div class="n">1</div><div>
+<h3>Выбери формат</h3>
+<p><b>Тезисы</b> — карточки с главными мыслями и цитатами. <b>Таблица</b> — раздел / тезис / почему важно / таймкод. <b>Блок-схема</b> — логика процесса в виде диаграммы. <b>Презентация</b> — 10–12 слайдов, листаются стрелками. <b>Инфографика</b> — одна страница с цифрами и карточками.</p>
+</div></div>
+<div class="step"><div class="n">2</div><div>
+<h3>Нажми «Сделать через API»</h3>
+<p>Через 30–90 секунд в браузере откроется готовая интерактивная страница в стиле Whispy. Она сохраняется в «Мои файлы»; кнопка <b>Сохранить в PDF</b> внизу страницы. Слайды переключаются стрелками клавиатуры.</p>
+<p>Ключ API уже встроен. Если хочешь свой — ⚙ рядом с кнопками.</p>
+</div></div>
+<div class="step"><div class="n">3</div><div>
+<h3>Без API — через чат Claude</h3>
+<p>Нажми <b>Скопировать промпт + текст</b>, затем <b>Открыть Claude</b>, вставь <kbd>Ctrl</kbd>+<kbd>V</kbd> и отправь. Claude сделает тот же формат прямо в чате.</p>
+</div></div>
+
+<h2 id="gpu">Видеокарта NVIDIA (ускорение в 5–10 раз)</h2>
+<div class="step"><div class="n">1</div><div>
+<h3>Помощь → Установить поддержку NVIDIA</h3>
+<img class="shot" src="img/help-menu.png" alt="Меню Помощь"><p class="cap">Меню Помощь в светлой теме.</p>
+<p>Программа скачает библиотеки CUDA (~1 ГБ) и попросит перезапуститься. Нужен установленный драйвер NVIDIA (GeForce Experience или сайт NVIDIA). После перезапуска поставь устройство «NVIDIA» или «Авто» — распознавание пойдёт на видеокарте, и можно выбирать large-v3.</p>
+</div></div>
+
+<h2 id="updates">Обновления</h2>
+<div class="step"><div class="n">1</div><div>
+<h3>Всё само</h3>
+<p>При запуске программа проверяет новую версию. Если есть — покажет, что нового, и кнопку <b>Обновить</b>: скачает, тихо поставит и перезапустится. Вручную — <b>Помощь → Проверить обновления</b>.</p>
+</div></div>
+
+<h2 id="faq">Если что-то не так</h2>
+<table><tr><th>Сообщение / ситуация</th><th>Что делать</th></tr>
+<tr><td>«YouTube попросил подтвердить, что вы не бот»</td><td>Подожди 10–15 минут и повтори. Если часто — установи обновление программы.</td></tr>
+<tr><td>«Видео недоступно» / «приватное»</td><td>Проверь, открывается ли ссылка в браузере без входа в аккаунт.</td></tr>
+<tr><td>«Мало места на диске»</td><td>Освободи место (модель medium ≈1,5 ГБ) или выбери small.</td></tr>
+<tr><td>Долго распознаёт</td><td>Режим «Быстро», модель small, или поставь поддержку NVIDIA. Часовой подкаст на CPU в режиме «Быстро» — примерно 10–20 минут.</td></tr>
+<tr><td>Спикеры определились неверно</td><td>Поставь точное число спикеров вместо «Авто» и запусти снова.</td></tr>
+<tr><td>Окно «зависло»</td><td>Нажми <kbd>Esc</kbd> — возможно, открыт диалог. Если не помогло — кнопка «Стоп» всегда освобождает интерфейс.</td></tr>
+</table>
+<footer>Whispy · только для личного использования · сборка и обновления через GitHub</footer>
+</main></body></html>

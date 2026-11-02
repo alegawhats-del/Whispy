@@ -59,10 +59,13 @@ pyinstaller --noconfirm --clean --windowed --onedir ^
     --name Whispy ^
     --icon whispy.ico ^
     --add-data "whispy.ico;." ^
+    --add-data "docs;docs" ^
     %KEYDATA% ^
     --collect-all customtkinter ^
     --collect-all yt_dlp ^
     --collect-all faster_whisper ^
+    --collect-all sherpa_onnx ^
+    --collect-all numpy ^
     --collect-all ctranslate2 ^
     --collect-all av ^
     --collect-all tokenizers ^
