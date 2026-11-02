@@ -27,7 +27,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.3.0"
+APP_VERSION = "2.3.1"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -309,6 +309,24 @@ def open_path(path):
         subprocess.Popen(["open", path])
     else:
         subprocess.Popen(["xdg-open", path])
+
+
+def open_html(path, title="Whispy"):
+    """Открывает HTML в окне программы (встроенный Edge WebView2). Если встроенного окна нет — в браузере."""
+    try:
+        import importlib
+        importlib.import_module("webview")
+        args = [sys.executable] + ([] if getattr(sys, "frozen", False) else [os.path.abspath(__file__)])
+        subprocess.Popen(args + ["--viewer", os.path.abspath(path), title], close_fds=True)
+    except Exception:
+        webbrowser.open("file:///" + os.path.abspath(path).replace("\\", "/"))
+
+
+def run_viewer(path, title):
+    import webview
+    url = "file:///" + os.path.abspath(path).replace("\\", "/")
+    webview.create_window(title, url, width=1120, height=820, min_size=(760, 520), background_color="#0E0913", text_select=True)
+    webview.start()
 
 
 def reveal_in_folder(path):
@@ -1119,7 +1137,8 @@ class FilesPanel(Panel):
             ctk.CTkLabel(row, text=meta, anchor="w", text_color=T["MUTED"], font=f_meta).grid(row=1, column=1, sticky="ew", pady=(0, 8))
             b = ctk.CTkFrame(row, fg_color="transparent")
             b.grid(row=0, column=2, rowspan=2, padx=(6, 10))
-            GhostButton(b, "Открыть", lambda p=p: open_path(p), width=84, height=30, bg=T["CARD"], font=("Segoe UI", 11, "bold")).pack(side="left", padx=2)
+            GhostButton(b, "Открыть", lambda p=p, e=ext: open_html(p, os.path.basename(p)) if e == ".html" else open_path(p),
+                        width=84, height=30, bg=T["CARD"], font=("Segoe UI", 11, "bold")).pack(side="left", padx=2)
             GhostButton(b, "В папке", lambda p=p: reveal_in_folder(p), width=78, height=30, bg=T["CARD"], font=("Segoe UI", 11, "bold")).pack(side="left", padx=2)
             if ext == ".txt":
                 GhostButton(b, "Копировать", lambda p=p: self._copy(p), width=96, height=30, bg=T["CARD"], font=("Segoe UI", 11, "bold")).pack(side="left", padx=2)
@@ -2211,7 +2230,7 @@ class App(ctk.CTk):
 
     def open_ai_file(self):
         if self.last_ai_path and os.path.exists(self.last_ai_path):
-            open_path(self.last_ai_path)
+            open_html(self.last_ai_path, "Whispy — " + os.path.basename(self.last_ai_path))
         else:
             self.toast("Результата ИИ ещё нет")
 
@@ -2352,7 +2371,7 @@ class App(ctk.CTk):
     def show_guide(self):
         p = resource("docs", "guide.html")
         if p:
-            webbrowser.open("file:///" + os.path.abspath(p).replace("\\", "/"))
+            open_html(p, "Whispy — руководство")
         else:
             webbrowser.open(GITHUB_URL + "/blob/main/docs/guide.md")
 
@@ -2448,7 +2467,7 @@ class App(ctk.CTk):
                     self.refresh_buttons()
                     self.toast("Результат ИИ сохранён и открыт  ✓")
                     try:
-                        open_path(d["path"])
+                        open_html(d["path"], "Whispy — " + os.path.basename(d["path"]))
                     except Exception:
                         pass
                 elif kind == "ai_error":
@@ -2527,6 +2546,12 @@ class App(ctk.CTk):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) >= 3 and sys.argv[1] == "--viewer":
+        try:
+            run_viewer(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "Whispy")
+        except Exception:
+            webbrowser.open("file:///" + os.path.abspath(sys.argv[2]).replace("\\", "/"))
+        sys.exit(0)
     if sys.platform == "win32":
         try:
             ctypes.windll.shcore.SetProcessDpiAwareness(1)

@@ -66,6 +66,10 @@ pyinstaller --noconfirm --clean --windowed --onedir ^
     --collect-all faster_whisper ^
     --collect-all sherpa_onnx ^
     --collect-all numpy ^
+    --collect-all webview ^
+    --collect-all clr_loader ^
+    --collect-all pythonnet ^
+    --hidden-import clr ^
     --collect-all ctranslate2 ^
     --collect-all av ^
     --collect-all tokenizers ^
