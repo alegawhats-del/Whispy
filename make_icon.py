@@ -1,55 +1,76 @@
 # -*- coding: utf-8 -*-
-"""Иконка whispy.ico: градиент розовый→фиолетовый, белая звуковая волна.
-Каждый размер рисуется отдельно, чтобы в 16–32 px волна оставалась читаемой."""
+"""Логотип Whispy: кнопка Play, собранная из столбиков звуковой волны, на градиенте розовый→фиолетовый.
+Генерирует whispy.ico (все размеры) и whispy.png (512) для шапки приложения."""
 from PIL import Image, ImageDraw, ImageFilter
+
+PINK, VIOLET, DEEP = (255, 95, 180), (139, 92, 246), (27, 15, 43)
 
 
 def lerp(a, b, t):
     return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
 
 
-def make(size):
+def play_wave(size, bars=None):
     s = size * 4
-    c1, c2 = (255, 95, 180), (139, 92, 246)
-    base = Image.new("RGB", (2, 2))
-    base.putdata([c1, lerp(c1, c2, 0.5), lerp(c1, c2, 0.5), c2])
-    grad = base.resize((s, s), Image.BILINEAR).convert("RGBA")
-
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+
+    # фон: диагональный градиент + тёмная подложка с мягким свечением
+    base = Image.new("RGB", (2, 2))
+    base.putdata([PINK, lerp(PINK, VIOLET, 0.5), lerp(PINK, VIOLET, 0.5), VIOLET])
+    grad = base.resize((s, s), Image.BILINEAR).convert("RGBA")
     mask = Image.new("L", (s, s), 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, s - 1, s - 1], radius=s * 0.24, fill=255)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, s - 1, s - 1], radius=int(s * 0.24), fill=255)
     img.paste(grad, (0, 0), mask)
+
+    # глубина: тёмная внутренняя область, чтобы белые столбики «светились»
+    inner = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    ImageDraw.Draw(inner).rounded_rectangle([s * 0.09, s * 0.09, s * 0.91, s * 0.91], radius=int(s * 0.19), fill=DEEP + (215,))
+    inner = inner.filter(ImageFilter.GaussianBlur(s * 0.01))
+    img.alpha_composite(inner)
 
     # блик сверху
     hl = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    ImageDraw.Draw(hl).ellipse([-s * 0.2, -s * 0.7, s * 1.2, s * 0.45], fill=(255, 255, 255, 60))
-    hl = hl.filter(ImageFilter.GaussianBlur(s * 0.08))
+    ImageDraw.Draw(hl).ellipse([-s * 0.1, -s * 0.55, s * 1.1, s * 0.35], fill=(255, 255, 255, 38))
+    hl = hl.filter(ImageFilter.GaussianBlur(s * 0.06))
     img.alpha_composite(Image.composite(hl, Image.new("RGBA", (s, s), (0, 0, 0, 0)), mask))
 
-    # волна: меньше столбиков на маленьких размерах
-    if size <= 24:
-        bars = [0.45, 0.9, 0.55]
-        w, gap = s * 0.16, s * 0.11
-    elif size <= 48:
-        bars = [0.35, 0.65, 0.95, 0.65, 0.35]
-        w, gap = s * 0.10, s * 0.06
-    else:
-        bars = [0.3, 0.55, 0.85, 1.0, 0.85, 0.55, 0.3]
-        w, gap = s * 0.075, s * 0.045
-    total = len(bars) * w + (len(bars) - 1) * gap
-    x = (s - total) / 2
-    d = ImageDraw.Draw(img)
-    for h in bars:
-        bh = s * 0.6 * h
+    # Play-треугольник из столбиков: высокие слева, сходят на нет справа
+    if bars is None:
+        bars = [0.92, 0.80, 0.66, 0.52, 0.38, 0.24] if size >= 48 else [0.9, 0.62, 0.34]
+    n = len(bars)
+    gap = s * (0.055 if n > 3 else 0.09)
+    bw = (s * 0.56 - gap * (n - 1)) / n
+    total = bw * n + gap * (n - 1)
+    x0 = (s - total) / 2 + s * 0.02
+
+    glow = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    x = x0
+    for i, h in enumerate(bars):
+        bh = s * 0.62 * h
         y0 = (s - bh) / 2
-        d.rounded_rectangle([x, y0, x + w, y0 + bh], radius=w / 2, fill=(255, 255, 255, 255))
-        x += w + gap
+        gd.rounded_rectangle([x, y0, x + bw, y0 + bh], radius=bw / 2, fill=lerp(PINK, VIOLET, i / max(1, n - 1)) + (200,))
+        x += bw + gap
+    glow = glow.filter(ImageFilter.GaussianBlur(s * 0.045))
+    img.alpha_composite(glow)
+
+    d = ImageDraw.Draw(img)
+    x = x0
+    for i, h in enumerate(bars):
+        bh = s * 0.62 * h
+        y0 = (s - bh) / 2
+        col = lerp((255, 255, 255), lerp(PINK, VIOLET, i / max(1, n - 1)), 0.0 if i == 0 else min(0.55, 0.12 * i))
+        d.rounded_rectangle([x, y0, x + bw, y0 + bh], radius=bw / 2, fill=col + (255,))
+        x += bw + gap
+
+    # тонкая светлая кромка
+    d.rounded_rectangle([s * 0.006, s * 0.006, s * 0.994, s * 0.994], radius=int(s * 0.24), outline=(255, 255, 255, 70), width=max(1, s // 160))
     return img.resize((size, size), Image.LANCZOS)
 
 
 if __name__ == "__main__":
     sizes = [256, 128, 64, 48, 32, 24, 16]
-    imgs = [make(sz) for sz in sizes]
+    imgs = [play_wave(sz) for sz in sizes]
     imgs[0].save("whispy.ico", format="ICO", sizes=[(sz, sz) for sz in sizes], append_images=imgs[1:])
-    imgs[0].save("whispy.png")
+    play_wave(512).save("whispy.png")
     print("whispy.ico OK")

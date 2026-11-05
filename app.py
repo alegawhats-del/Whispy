@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.3.2"
+APP_VERSION = "2.3.3"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -99,9 +99,9 @@ THEMES = {
         BG="#F6F2FA", CARD="#FFFFFF", BORDER="#EADFF2", FIELD="#F4EEF9", FIELD_BORDER="#DCCDE8",
         TEXT="#2A1E33", MUTED="#8A7D96", PINK="#E8449F", VIOLET="#7C4DFF", PINK_HOVER="#F25CB0",
         PINK_SOFT="#FBE6F2", OK="#1FA86B", OK_SOFT="#E3F6EC", ERR="#E24A5C", ERR_SOFT="#FDE6EA",
-        GREY_SOFT="#ECE6F1", HERO1="#FFFFFF", HERO2="#F1E7FA", HERO_TEXT="#2A1E33", HERO_SUB="#6F6280",
-        HERO_CHIP="#F7EEFB", HERO_CHIP_BORDER="#E3D3F0", TOAST="#2A1E33", TOAST_TEXT="#FFFFFF",
-        BLOB_ALPHA=110, GRID_ALPHA=10, SELECT="#C7B6F5",
+        GREY_SOFT="#ECE6F1", HERO1="#F4E6FB", HERO2="#E3D4F7", HERO_TEXT="#2A1E33", HERO_SUB="#5E4F70",
+        HERO_CHIP="#FBF5FE", HERO_CHIP_BORDER="#D9C6EC", TOAST="#2A1E33", TOAST_TEXT="#FFFFFF",
+        BLOB_ALPHA=190, GRID_ALPHA=16, SELECT="#C7B6F5",
         SPK=["#E8449F", "#7C4DFF", "#1FA86B", "#E08A1E", "#1E8FD6", "#E0553B"],
     ),
 }
@@ -380,6 +380,24 @@ def resource(*parts):
     return None
 
 
+_LOGO = {}
+
+
+def logo_image(size):
+    """Логотип из whispy.png (рядом с exe / в сборке), ужатый до size. Кэшируется."""
+    if size in _LOGO:
+        return _LOGO[size]
+    p = resource("whispy.png")
+    img = None
+    if p:
+        try:
+            img = Image.open(p).convert("RGBA").resize((size, size), Image.LANCZOS)
+        except Exception:
+            img = None
+    _LOGO[size] = img
+    return img
+
+
 def model_cached(name):
     return os.path.isdir(os.path.join(MODELS_DIR, f"models--Systran--faster-whisper-{name}", "snapshots"))
 
@@ -520,6 +538,9 @@ def hero_image(w, h, chip_text, chip_font):
                                            fill=hex_rgb(T["HERO_CHIP"]) + (235,), outline=hex_rgb(T["HERO_CHIP_BORDER"]) + (255,), width=s)
     chip = chip.resize((cw, 26), Image.LANCZOS)
     img.paste(chip, (30, 102), chip)
+    logo = logo_image(64)
+    if logo is not None:
+        img.paste(logo, (30, 22), logo)
     out = Image.new("RGB", (w, h), hex_rgb(T["BG"]))
     out.paste(img, (0, 0), rounded_mask(w, h, 22))
     return out, cw
@@ -1705,6 +1726,8 @@ class App(ctk.CTk):
         self.files_panel = None
         self._hero_bars = []
         self._hero_phase = 0.0
+        self._scroll_target = None
+        self._scroll_job = None
 
         self.url_var = tk.StringVar(value="")
         self.lang_var = tk.StringVar(value=self.settings.get("lang", "Русский"))
@@ -1881,7 +1904,12 @@ class App(ctk.CTk):
         bar = ctk.CTkFrame(self, fg_color=T["BG"], corner_radius=0, height=44)
         bar.grid(row=0, column=0, sticky="ew")
         bar.grid_propagate(False)
-        ctk.CTkLabel(bar, text="", width=10, height=10, corner_radius=5, fg_color=T["PINK"]).pack(side="left", padx=(24, 8), pady=17)
+        lg = logo_image(20)
+        if lg is not None:
+            self._bar_logo = ImageTk.PhotoImage(lg)
+            tk.Label(bar, image=self._bar_logo, bg=T["BG"], bd=0).pack(side="left", padx=(24, 8), pady=12)
+        else:
+            ctk.CTkLabel(bar, text="", width=10, height=10, corner_radius=5, fg_color=T["PINK"]).pack(side="left", padx=(24, 8), pady=17)
         ctk.CTkLabel(bar, text="Whispy", text_color=T["TEXT"], font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold")).pack(side="left", padx=(0, 18))
         self.menu_btns = {}
         for name in ("Файл", "Правка", "Вид", "ИИ", "Помощь"):
@@ -2003,6 +2031,7 @@ class App(ctk.CTk):
         self.file_btn = bottom.add(GhostButton(bottom, "Открыть файл", self.open_file, width=150, height=42))
         self.folder_btn = bottom.add(GhostButton(bottom, "Показать в папке", lambda: reveal_in_folder(self.last_path), width=160, height=42))
         self.path_lbl = bottom.add(ctk.CTkLabel(bottom, text=os.path.basename(self.last_path) if self.last_path else "", font=f_small, text_color=T["MUTED"]))
+        self._scroll_target = None
         self.refresh_buttons()
         self.unbind_all("<MouseWheel>")
         self.bind_all("<MouseWheel>", self._wheel)
@@ -2028,10 +2057,32 @@ class App(ctk.CTk):
             total = (bbox[3] - bbox[1]) if bbox else 0
             if total <= 0:
                 return
-            lo, _ = cv.yview()
-            cv.yview_moveto(max(0.0, lo + (150 * (-e.delta / 120)) / total))
+            vis = cv.winfo_height() / total
+            if self._scroll_target is None:
+                self._scroll_target = cv.yview()[0]
+            self._scroll_target = min(max(0.0, self._scroll_target + (120 * (-e.delta / 120)) / total), max(0.0, 1 - vis))
+            if self._scroll_job is None:
+                self._scroll_job = self.after(16, self._scroll_step)
         except Exception:
             pass
+
+    def _scroll_step(self):
+        self._scroll_job = None
+        try:
+            cv = self.scroll._parent_canvas
+            cur = cv.yview()[0]
+            tgt = self._scroll_target
+            if tgt is None:
+                return
+            diff = tgt - cur
+            if abs(diff) < 0.0005:
+                cv.yview_moveto(tgt)
+                self._scroll_target = None
+                return
+            cv.yview_moveto(cur + diff * 0.28)
+            self._scroll_job = self.after(16, self._scroll_step)
+        except Exception:
+            self._scroll_target = None
 
     def _draw_hero(self, e):
         w, h = max(e.width, 200), 140
@@ -2041,8 +2092,9 @@ class App(ctk.CTk):
         self._hero_img = ImageTk.PhotoImage(img)
         self.hero.delete("all")
         self.hero.create_image(0, 0, anchor="nw", image=self._hero_img)
-        self.hero.create_text(30, 48, anchor="w", text="Whispy", fill=T["HERO_TEXT"], font=("Segoe UI", 30, "bold"))
-        self.hero.create_text(30, 84, anchor="w", text="YouTube-ссылка → текст с таймкодами и спикерами → главное через ИИ. Локально и бесплатно.",
+        tx = 110 if logo_image(64) is not None else 30
+        self.hero.create_text(tx, 48, anchor="w", text="Whispy", fill=T["HERO_TEXT"], font=("Segoe UI", 30, "bold"))
+        self.hero.create_text(tx, 84, anchor="w", text="YouTube-ссылка → текст с таймкодами и спикерами → главное через ИИ. Локально и бесплатно.",
                               fill=T["HERO_SUB"], font=("Segoe UI", 12))
         self.hero.create_text(30 + cw / 2, 115, text=chip_text, fill=T["HERO_SUB"], font=("Segoe UI", 10, "bold"))
         self._hero_bars = []

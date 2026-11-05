@@ -57,6 +57,7 @@ pyinstaller --noconfirm --clean --windowed --onedir ^
     --name Whispy ^
     --icon whispy.ico ^
     --add-data "whispy.ico;." ^
+    --add-data "whispy.png;." ^
     --add-data "docs;docs" ^
     --collect-all customtkinter ^
     --collect-all yt_dlp ^

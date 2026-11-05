@@ -56,7 +56,7 @@ jobs:
         run: |
           $extra = @()
           pyinstaller --noconfirm --clean --windowed --onedir `
-            --name Whispy --icon whispy.ico --add-data "whispy.ico;." --add-data "docs;docs" @extra `
+            --name Whispy --icon whispy.ico --add-data "whispy.ico;." --add-data "whispy.png;." --add-data "docs;docs" @extra `
             --collect-all customtkinter --collect-all yt_dlp --collect-all faster_whisper --collect-all sherpa_onnx --collect-all numpy --collect-all webview --collect-all clr_loader --collect-all pythonnet --hidden-import clr `
             --collect-all ctranslate2 --collect-all av --collect-all tokenizers `
             --collect-all huggingface_hub --collect-all onnxruntime `
