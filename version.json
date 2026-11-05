@@ -1,6 +1,6 @@
 {
-  "version": "2.3.7",
+  "version": "2.4.0",
   "date": "2026-11-05",
-  "notes": "• Окно руководства и результатов ИИ — в стиле программы: тёмный заголовок, иконка Whispy",
-  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.3.7/Whispy-Setup-2.3.7.exe"
+  "notes": "• Интерфейс «жидкое стекло»: цветной фон, стеклянные карточки с кромкой и тенью\n• Кнопки подстраиваются под длину текста\n• Руководство с новыми снимками экрана",
+  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.4.0/Whispy-Setup-2.4.0.exe"
 }
