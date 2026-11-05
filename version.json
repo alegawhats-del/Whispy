@@ -1,6 +1,6 @@
 {
-  "version": "2.3.1",
-  "date": "2026-11-02",
-  "notes": "• Руководство и результаты ИИ открываются в окне программы (встроенный Edge), а не в браузере",
-  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.3.1/Whispy-Setup-2.3.1.exe"
+  "version": "2.3.2",
+  "date": "2026-11-05",
+  "notes": "• Встроенный API-ключ убран: ключ вводится один раз через ⚙ (кнопка «Сделать через API» сама попросит)",
+  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.3.2/Whispy-Setup-2.3.2.exe"
 }
