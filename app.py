@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.3.3"
+APP_VERSION = "2.3.4"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -1685,7 +1685,14 @@ class UpdateDownload(threading.Thread):
 
 def apply_update(path):
     if INSTALLED:
-        subprocess.Popen([path, "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS", "/NORESTART"])
+        # ждём завершения тихой установки и сами запускаем новую версию
+        exe = sys.executable
+        bat = os.path.join(UPDATES_DIR, "apply.bat")
+        with open(bat, "w", encoding="cp866", errors="replace") as f:
+            f.write("@echo off\ntimeout /t 1 >nul\n"
+                    f'start /wait "" "{path}" /SILENT /CLOSEAPPLICATIONS /NORESTART\n'
+                    f'start "" "{exe}"\ndel "{path}" 2>nul\ndel "%~f0"\n')
+        subprocess.Popen(["cmd", "/c", bat], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         return
     exe = sys.executable
     bat = os.path.join(UPDATES_DIR, "apply.bat")
