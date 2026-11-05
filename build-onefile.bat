@@ -19,8 +19,6 @@ if not exist whispy.ico (
 )
 
 echo [2/2] Building single-file Whispy.exe (5-15 minutes, file will be 200-350 MB)...
-set KEYDATA=
-if exist default_key.txt set KEYDATA=--add-data "default_key.txt;."
 if exist build rmdir /s /q build
 if exist dist\Whispy.exe del /q dist\Whispy.exe
 pyinstaller --noconfirm --clean --windowed --onefile ^
@@ -28,7 +26,6 @@ pyinstaller --noconfirm --clean --windowed --onefile ^
     --icon whispy.ico ^
     --add-data "whispy.ico;." ^
     --add-data "docs;docs" ^
-    %KEYDATA% ^
     --collect-all customtkinter ^
     --collect-all yt_dlp ^
     --collect-all faster_whisper ^

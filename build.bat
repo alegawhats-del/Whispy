@@ -51,8 +51,6 @@ if errorlevel 1 (
 )
 
 echo [4/5] Building Whispy.exe (3-10 minutes)...
-set KEYDATA=
-if exist default_key.txt set KEYDATA=--add-data "default_key.txt;."
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
 pyinstaller --noconfirm --clean --windowed --onedir ^
@@ -60,7 +58,6 @@ pyinstaller --noconfirm --clean --windowed --onedir ^
     --icon whispy.ico ^
     --add-data "whispy.ico;." ^
     --add-data "docs;docs" ^
-    %KEYDATA% ^
     --collect-all customtkinter ^
     --collect-all yt_dlp ^
     --collect-all faster_whisper ^

@@ -16,7 +16,6 @@ import time
 import queue
 import shutil
 import ctypes
-import base64
 import zipfile
 import datetime
 import threading
@@ -27,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.3.1"
+APP_VERSION = "2.3.2"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -379,20 +378,6 @@ def resource(*parts):
         if os.path.exists(p):
             return p
     return None
-
-
-def load_default_key():
-    p = resource("default_key.txt")
-    if not p:
-        return ""
-    try:
-        with open(p, "r", encoding="utf-8") as f:
-            raw = f.read().strip()
-        if raw.startswith("b64:"):
-            raw = base64.b64decode(raw[4:]).decode("utf-8").strip()
-        return raw
-    except Exception:
-        return ""
 
 
 def model_cached(name):
@@ -1730,7 +1715,7 @@ class App(ctk.CTk):
         self.ai_var = tk.StringVar(value=self.settings.get("ai_type", "Тезисы"))
         for v in (self.lang_var, self.model_var, self.device_var, self.speed_var, self.spk_var, self.ai_var):
             v.trace_add("write", lambda *a: self.persist())
-        self.api_key = self.settings.get("api_key") or load_default_key()
+        self.api_key = self.settings.get("api_key", "")
 
         self.build()
         self.bind_all("<Control-KeyPress>", self._hotkeys, add="+")
@@ -2009,7 +1994,7 @@ class App(ctk.CTk):
         self.ai_result_btn = aiflow.add(GhostButton(aiflow, "Открыть результат", self.open_ai_file, width=160, height=38, bg=T["CARD"]))
         self.ai_key_btn = aiflow.add(GhostButton(aiflow, "⚙", self.ask_api_key, width=38, height=38, bg=T["CARD"], text_color=T["MUTED"], radius=19))
         self.label(ai, "Результат — интерактивная страница в стиле Whispy: карточки, таблица, схема, слайды со стрелками или инфографика. "
-                       "Открывается в браузере, лежит в «Мои файлы», печатается в PDF. Без API — скопируй промпт и вставь в Claude.",
+                       "Нужен API-ключ (⚙, вводится один раз). Без ключа — скопируй промпт и вставь в Claude.",
                    bold=False, wraplength=900, justify="left").grid(row=2, column=0, sticky="w", padx=22, pady=(0, 16))
 
         bottom = Flow(root, gap=10, vgap=8)
@@ -2108,7 +2093,7 @@ class App(ctk.CTk):
         self.file_btn.configure(state="normal" if self.last_path else "disabled")
         self.ai_copy_btn.configure(state="normal" if has else "disabled")
         self.ai_result_btn.configure(state="normal" if self.last_ai_path else "disabled")
-        self.ai_api_btn.configure(state="normal" if (has and self.api_key and not busy and not ai_busy) else "disabled",
+        self.ai_api_btn.configure(state="normal" if (has and not busy and not ai_busy) else "disabled",
                                   text="Работаю…" if ai_busy else "Сделать через API")
         self.go_btn.configure(state="disabled" if busy else "normal", text="Работаю…" if busy else "Получить текст  ✦")
 
@@ -2269,18 +2254,22 @@ class App(ctk.CTk):
 
     def ask_api_key(self):
         val = Dialog.show_modal(self, "API-ключ Anthropic",
-                                "Вставь ключ вида sk-ant-… из console.anthropic.com. Пустая строка — удалить свой ключ.\n"
-                                "Ключ хранится только на этом компьютере.", "input", secret=True, default=self.api_key, ok="Сохранить")
+                                "Вставь ключ вида sk-ant-… (его даёт владелец программы или console.anthropic.com). "
+                                "Пустая строка — удалить ключ. Ключ хранится только на этом компьютере.", "input", secret=True, default=self.api_key, ok="Сохранить")
         if val is None:
             return
-        self.api_key = val.strip() or load_default_key()
+        self.api_key = val.strip()
         self.persist()
-        self.toast("Ключ сохранён  ✓" if val.strip() else "Свой ключ удалён")
+        self.toast("Ключ сохранён  ✓" if val.strip() else "Ключ удалён")
         self.refresh_buttons()
 
     def run_ai_api(self):
-        if not self.all_lines or not self.api_key or (self.ai_worker and self.ai_worker.is_alive()):
+        if not self.all_lines or (self.ai_worker and self.ai_worker.is_alive()):
             return
+        if not self.api_key:
+            self.ask_api_key()
+            if not self.api_key:
+                return
         self.persist()
         self.chip.set("ИИ", "work")
         self.wave.start()

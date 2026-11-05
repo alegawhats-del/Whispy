@@ -46,14 +46,6 @@ jobs:
           else { "exists=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append; "Will build v$v" }
           exit 0
 
-      - name: Default API key (from secret)
-        if: steps.ver.outputs.exists == 'false'
-        shell: pwsh
-        env:
-          KEY: ${{ secrets.DEFAULT_API_KEY }}
-        run: |
-          if ($env:KEY) { Set-Content -Path default_key.txt -Value $env:KEY -NoNewline; "key: embedded" } else { "key: none" }
-
       - name: Icon
         if: steps.ver.outputs.exists == 'false'
         run: python make_icon.py
@@ -63,7 +55,6 @@ jobs:
         shell: pwsh
         run: |
           $extra = @()
-          if (Test-Path default_key.txt) { $extra += @("--add-data", "default_key.txt;.") }
           pyinstaller --noconfirm --clean --windowed --onedir `
             --name Whispy --icon whispy.ico --add-data "whispy.ico;." --add-data "docs;docs" @extra `
             --collect-all customtkinter --collect-all yt_dlp --collect-all faster_whisper --collect-all sherpa_onnx --collect-all numpy --collect-all webview --collect-all clr_loader --collect-all pythonnet --hidden-import clr `
