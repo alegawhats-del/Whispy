@@ -59,6 +59,7 @@ pyinstaller --noconfirm --clean --windowed --onedir ^
     --add-data "whispy.ico;." ^
     --add-data "whispy.png;." ^
     --add-data "docs;docs" ^
+    --add-data "fonts;fonts" ^
     --collect-all customtkinter ^
     --collect-all yt_dlp ^
     --collect-all faster_whisper ^

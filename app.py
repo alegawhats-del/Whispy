@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.3.5"
+APP_VERSION = "2.3.6"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -83,6 +83,27 @@ if sys.platform == "win32":
 
 import customtkinter as ctk  # noqa: E402
 from PIL import Image, ImageDraw, ImageFilter, ImageTk  # noqa: E402
+
+
+def _load_fonts():
+    """Подключаем фирменный шрифт Manrope (папка fonts) только для этого процесса — без установки в систему."""
+    for root in (BASE_DIR, RES_DIR, os.path.join(BASE_DIR, "_internal")):
+        d = os.path.join(root, "fonts")
+        if not os.path.isdir(d):
+            continue
+        ok = False
+        for f in glob.glob(os.path.join(d, "*.ttf")):
+            try:
+                if sys.platform == "win32" and ctypes.windll.gdi32.AddFontResourceExW(f, 0x10, 0) > 0:
+                    ok = True
+            except Exception:
+                pass
+        if ok:
+            return "Manrope", d
+    return "Segoe UI", None
+
+
+UI_FONT, FONT_DIR = _load_fonts()
 
 # ---------- темы ----------
 THEMES = {
@@ -179,8 +200,9 @@ HTML_SHELL = """<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title}</title>
 <style>
+{font_face}
 :root{{--bg:#0E0913;--card:#18111F;--border:#2A1E35;--field:#221829;--text:#F5EEF9;--muted:#8C7E98;--pink:#FF5FB4;--violet:#8B5CF6;--ok:#4ADE9A}}
-*{{box-sizing:border-box}}html,body{{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 "Segoe UI",system-ui,sans-serif}}
+*{{box-sizing:border-box}}html,body{{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 Manrope,"Segoe UI",system-ui,sans-serif}}
 body::before{{content:"";position:fixed;inset:-20% -10% auto -10%;height:60vh;background:radial-gradient(60% 60% at 70% 30%,rgba(255,95,180,.28),transparent 70%),radial-gradient(50% 60% at 90% 70%,rgba(139,92,246,.30),transparent 70%);filter:blur(40px);z-index:-1;pointer-events:none}}
 main{{max-width:1040px;margin:0 auto;padding:56px 24px 80px}}
 header.top{{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:28px;color:var(--muted);font-size:13px}}
@@ -210,7 +232,7 @@ pre.mermaid{{background:var(--card);border:1px solid var(--border);border-radius
 ol,ul{{padding-left:22px}}li{{margin:6px 0}}
 footer{{margin-top:48px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:16px}}
 .toolbar{{position:fixed;right:18px;bottom:18px;display:flex;gap:8px}}
-.toolbar button{{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:999px;padding:10px 14px;font:600 13px "Segoe UI";cursor:pointer;transition:transform 160ms cubic-bezier(.23,1,.32,1)}}
+.toolbar button{{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:999px;padding:10px 14px;font:600 13px Manrope,"Segoe UI";cursor:pointer;transition:transform 160ms cubic-bezier(.23,1,.32,1)}}
 .toolbar button:active{{transform:scale(.97)}}
 {extra_css}
 @media print{{body::before,.toolbar{{display:none}}main{{padding:0}}.card{{break-inside:avoid}}}}
@@ -228,7 +250,7 @@ SLIDES_CSS = """
 .slide{display:none;min-height:70vh;padding:44px 48px;border-radius:24px;background:var(--card);border:1px solid var(--border);animation:in .3s cubic-bezier(.23,1,.32,1) both}
 .slide.active{display:block}.slide h2{border:0;padding:0;margin:0 0 20px;font-size:34px}.slide li{font-size:20px;margin:12px 0}
 .slide h1{font-size:52px}.nav{display:flex;gap:10px;align-items:center;justify-content:center;margin-top:18px;color:var(--muted)}
-.nav button{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:999px;padding:10px 18px;font:600 14px "Segoe UI";cursor:pointer;transition:transform 160ms cubic-bezier(.23,1,.32,1)}
+.nav button{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:999px;padding:10px 18px;font:600 14px Manrope,"Segoe UI";cursor:pointer;transition:transform 160ms cubic-bezier(.23,1,.32,1)}
 .nav button:active{transform:scale(.97)}
 .progress{height:4px;background:var(--field);border-radius:4px;overflow:hidden;margin-top:14px}.progress i{display:block;height:100%;background:linear-gradient(90deg,var(--pink),var(--violet));transition:width .25s cubic-bezier(.23,1,.32,1)}
 @media print{.slide{display:block;page-break-after:always;min-height:auto}.nav,.progress{display:none}}
@@ -243,7 +265,7 @@ document.getElementById('p').onclick=function(){show(i-1)};document.getElementBy
 document.addEventListener('keydown',function(e){if(e.key==='ArrowRight'||e.key===' ')show(i+1);if(e.key==='ArrowLeft')show(i-1)});show(0)})();
 </script>"""
 MERMAID_HEAD = """<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
-<script>mermaid.initialize({startOnLoad:true,theme:'dark',themeVariables:{primaryColor:'#2E1A33',primaryTextColor:'#F5EEF9',primaryBorderColor:'#FF5FB4',lineColor:'#8B5CF6',secondaryColor:'#221829',tertiaryColor:'#18111F',fontFamily:'Segoe UI'}});</script>"""
+<script>mermaid.initialize({startOnLoad:true,theme:'dark',themeVariables:{primaryColor:'#2E1A33',primaryTextColor:'#F5EEF9',primaryBorderColor:'#FF5FB4',lineColor:'#8B5CF6',secondaryColor:'#221829',tertiaryColor:'#18111F',fontFamily:'Manrope, Segoe UI'}});</script>"""
 
 
 def html_escape(s):
@@ -259,8 +281,14 @@ def wrap_ai_html(kind, fragment, title, url):
     extra_css = SLIDES_CSS if kind == "Презентация" else ""
     extra_js = SLIDES_JS if kind == "Презентация" else ""
     extra_head = MERMAID_HEAD if kind == "Блок-схема" else ""
+    font_face = ""
+    if FONT_DIR:
+        base = "file:///" + os.path.abspath(FONT_DIR).replace("\\", "/")
+        font_face = (f"@font-face{{font-family:Manrope;font-weight:400;src:url('{base}/Manrope-Regular.ttf')}}"
+                     f"@font-face{{font-family:Manrope;font-weight:700;src:url('{base}/Manrope-Bold.ttf')}}")
     return HTML_SHELL.format(title=html_escape(title), kind=kind, date=datetime.date.today().strftime("%d.%m.%Y"),
-                             content=frag, url=html_escape(url), extra_css=extra_css, extra_head=extra_head, extra_js=extra_js)
+                             content=frag, url=html_escape(url), extra_css=extra_css, extra_head=extra_head, extra_js=extra_js,
+                             font_face=font_face)
 
 
 # ---------- утилиты ----------
@@ -624,6 +652,11 @@ def icon_image(name, size, color, bg=None):
     elif name == "refresh":
         d.arc([5 * u, 5 * u, 19 * u, 19 * u], 300, 240, fill=c, width=w)
         d.polygon([(19.5 * u, 4 * u), (20.5 * u, 10.5 * u), (14 * u, 9.5 * u)], fill=c)
+    elif name == "key":
+        d.ellipse([3 * u, 8 * u, 11 * u, 16 * u], outline=c, width=w)
+        line([(11, 12), (21, 12)])
+        line([(17, 12), (17, 16)])
+        line([(20, 12), (20, 15)])
     elif name == "pin":
         d.ellipse([5 * u, 3 * u, 19 * u, 17 * u], outline=c, width=w)
         line([(12, 17), (12, 22)])
@@ -652,7 +685,7 @@ class GradientButton(tk.Canvas):
         self.command = command
         self._icon_name = icon
         self._state = "normal"
-        self._font = font or ("Segoe UI", 13, "bold")
+        self._font = font or (UI_FONT, 13, "bold")
         c1, c2 = GRAD()
         self._frames = [ImageTk.PhotoImage(pill(width, height, c1, c2, bg, brightness=1.0 + 0.12 * i / (self.FRAMES - 1), glow=g))
                         for i in range(self.FRAMES)]
@@ -743,7 +776,7 @@ class GhostButton(tk.Canvas):
         self.command = command
         self._state = "normal"
         self._tc, self._accent = text_color, accent
-        self._font = font or ("Segoe UI", 12, "bold")
+        self._font = font or (UI_FONT, 12, "bold")
         self._icon_name, self._icon_size = icon, icon_size
         pw, ph = int(width * 0.97), int(height * 0.97)
         pressed = Image.new("RGB", (width, height), hex_rgb(bg))
@@ -931,7 +964,7 @@ class Wave(tk.Canvas):
 class Chip(ctk.CTkLabel):
     def __init__(self, master, text="Ожидание", **kw):
         super().__init__(master, text=text, height=28, corner_radius=14, padx=14, fg_color=T["PINK_SOFT"], text_color=T["PINK"],
-                         font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), **kw)
+                         font=ctk.CTkFont(family=UI_FONT, size=11, weight="bold"), **kw)
 
     def set(self, text, kind="work"):
         colors = {"work": (T["PINK_SOFT"], T["PINK"]), "ok": (T["OK_SOFT"], T["OK"]),
@@ -1090,7 +1123,7 @@ class Panel(tk.Toplevel):
         self._badge = ImageTk.PhotoImage(icon_image(glyph, 20, color, bg=soft))
         ctk.CTkLabel(top, text="", image=self._badge, width=40, height=40, corner_radius=20, fg_color=soft).pack(side="left")
         ctk.CTkLabel(top, text=title, text_color=T["TEXT"], anchor="w",
-                     font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold")).pack(side="left", padx=12, fill="x", expand=True)
+                     font=ctk.CTkFont(family=UI_FONT, size=16, weight="bold")).pack(side="left", padx=12, fill="x", expand=True)
         GhostButton(top, "", lambda: self.close(None), width=34, height=34, bg=T["CARD"], text_color=T["MUTED"],
                     accent=T["ERR"], radius=17, icon="close", icon_size=14).pack(side="right")
         return top
@@ -1102,7 +1135,7 @@ class Dialog(Panel):
     def __init__(self, master, title, message, kind="info", secret=False, default="", ok="Ок", cancel="Отмена"):
         W = 520
         wrap = W - 28 * 2 - 28
-        f = tkfont.Font(family="Segoe UI", size=12)
+        f = tkfont.Font(family=UI_FONT, size=12)
         lines = sum(max(1, math.ceil(f.measure(p) / wrap)) if p else 1 for p in message.split("\n"))
         H = 150 + lines * 21 + (64 if kind == "input" else 0)
         super().__init__(master, W, H)
@@ -1110,19 +1143,19 @@ class Dialog(Panel):
                             "confirm": ("question", T["PINK"], T["PINK_SOFT"]), "input": ("sparkle", T["VIOLET"], T["PINK_SOFT"])}[kind]
         self.header(glyph, col, soft, title)
         ctk.CTkLabel(self.body, text=message, text_color=T["MUTED"], anchor="w", justify="left", wraplength=wrap,
-                     font=ctk.CTkFont(family="Segoe UI", size=12)).pack(fill="x", padx=28, pady=(6, 4))
+                     font=ctk.CTkFont(family=UI_FONT, size=12)).pack(fill="x", padx=28, pady=(6, 4))
         self.entry = None
         if kind == "input":
             self.var = tk.StringVar(value=default)
             self.entry = ctk.CTkEntry(self.body, textvariable=self.var, height=42, corner_radius=14, show="•" if secret else "",
                                       fg_color=T["FIELD"], border_color=T["FIELD_BORDER"], border_width=1, text_color=T["TEXT"],
-                                      font=ctk.CTkFont(family="Segoe UI", size=13))
+                                      font=ctk.CTkFont(family=UI_FONT, size=13))
             self.entry.pack(fill="x", padx=28, pady=(8, 4))
             self.entry.bind("<FocusIn>", lambda e: self.entry.configure(border_color=T["PINK"]))
             self.entry.bind("<FocusOut>", lambda e: self.entry.configure(border_color=T["FIELD_BORDER"]))
         btns = ctk.CTkFrame(self.body, fg_color="transparent")
         btns.pack(fill="x", padx=18, pady=(10, 8), side="bottom")
-        GradientButton(btns, ok, self._ok, width=130, height=40, bg=T["CARD"], font=("Segoe UI", 12, "bold")).pack(side="right")
+        GradientButton(btns, ok, self._ok, width=130, height=40, bg=T["CARD"], font=(UI_FONT, 12, "bold")).pack(side="right")
         if kind in ("confirm", "input"):
             GhostButton(btns, cancel, lambda: self.close(None if self.entry else False), width=110, height=40, bg=T["CARD"]).pack(side="right", padx=(0, 6))
         self.bind("<Return>", lambda e: self._ok())
@@ -1155,8 +1188,8 @@ class Dropdown(tk.Toplevel):
         cv.pack()
         cv.create_image(0, 0, anchor="nw", image=self._img)
         y = pad + 2
-        f = ctk.CTkFont(family="Segoe UI", size=12)
-        fs = ctk.CTkFont(family="Segoe UI", size=10)
+        f = ctk.CTkFont(family=UI_FONT, size=12)
+        fs = ctk.CTkFont(family=UI_FONT, size=10)
         for it in items:
             if it is None:
                 sep = ctk.CTkFrame(self, fg_color=T["BORDER"], bg_color=T["CARD"], height=1, corner_radius=0)
@@ -1221,12 +1254,12 @@ class FilesPanel(Panel):
     def __init__(self, master):
         super().__init__(master, 780, 580, modal=False)
         self.header("folder", T["VIOLET"], T["PINK_SOFT"], "Мои файлы")
-        ctk.CTkLabel(self.body, text=OUT_DIR, text_color=T["MUTED"], anchor="w", font=ctk.CTkFont(family="Segoe UI", size=11)).pack(fill="x", padx=28, pady=(0, 6))
+        ctk.CTkLabel(self.body, text=OUT_DIR, text_color=T["MUTED"], anchor="w", font=ctk.CTkFont(family=UI_FONT, size=11)).pack(fill="x", padx=28, pady=(0, 6))
         tools = ctk.CTkFrame(self.body, fg_color="transparent")
         tools.pack(fill="x", padx=14, pady=(0, 6))
         GhostButton(tools, "Открыть папку", lambda: open_path(OUT_DIR), width=150, height=34, bg=T["CARD"], icon="folder", icon_size=15).pack(side="left")
         GhostButton(tools, "Обновить", self.refresh, width=118, height=34, bg=T["CARD"], icon="refresh", icon_size=15).pack(side="left", padx=8)
-        self.count = ctk.CTkLabel(tools, text="", text_color=T["MUTED"], font=ctk.CTkFont(family="Segoe UI", size=11))
+        self.count = ctk.CTkLabel(tools, text="", text_color=T["MUTED"], font=ctk.CTkFont(family=UI_FONT, size=11))
         self.count.pack(side="right")
         self.list = ctk.CTkScrollableFrame(self.body, fg_color=T["FIELD"], corner_radius=14,
                                            scrollbar_button_color=T["FIELD_BORDER"], scrollbar_button_hover_color=T["PINK"])
@@ -1244,8 +1277,8 @@ class FilesPanel(Panel):
         files.sort(key=os.path.getmtime, reverse=True)
         self.count.configure(text=f"{len(files)} файлов")
         kinds = {".txt": ("doc", "Транскрипт"), ".html": ("sparkle", "ИИ · страница"), ".md": ("sparkle", "ИИ · Markdown")}
-        f_name = ctk.CTkFont(family="Segoe UI", size=12, weight="bold")
-        f_meta = ctk.CTkFont(family="Segoe UI", size=10)
+        f_name = ctk.CTkFont(family=UI_FONT, size=12, weight="bold")
+        f_meta = ctk.CTkFont(family=UI_FONT, size=10)
         if not files:
             ctk.CTkLabel(self.list, text="Пока пусто — получи первый текст.", text_color=T["MUTED"]).grid(row=0, column=0, padx=16, pady=16)
         for i, p in enumerate(files[:200]):
@@ -1264,10 +1297,10 @@ class FilesPanel(Panel):
             b = ctk.CTkFrame(row, fg_color="transparent")
             b.grid(row=0, column=2, rowspan=2, padx=(6, 10))
             GhostButton(b, "Открыть", lambda p=p, e=ext: open_html(p, os.path.basename(p)) if e == ".html" else open_path(p),
-                        width=84, height=30, bg=T["CARD"], font=("Segoe UI", 11, "bold")).pack(side="left", padx=2)
-            GhostButton(b, "В папке", lambda p=p: reveal_in_folder(p), width=78, height=30, bg=T["CARD"], font=("Segoe UI", 11, "bold")).pack(side="left", padx=2)
+                        width=84, height=30, bg=T["CARD"], font=(UI_FONT, 11, "bold")).pack(side="left", padx=2)
+            GhostButton(b, "В папке", lambda p=p: reveal_in_folder(p), width=78, height=30, bg=T["CARD"], font=(UI_FONT, 11, "bold")).pack(side="left", padx=2)
             if ext == ".txt":
-                GhostButton(b, "Копировать", lambda p=p: self._copy(p), width=96, height=30, bg=T["CARD"], font=("Segoe UI", 11, "bold")).pack(side="left", padx=2)
+                GhostButton(b, "Копировать", lambda p=p: self._copy(p), width=96, height=30, bg=T["CARD"], font=(UI_FONT, 11, "bold")).pack(side="left", padx=2)
 
     def _copy(self, p):
         try:
@@ -1870,10 +1903,8 @@ class App(ctk.CTk):
         self.build()
         self.bind_all("<Control-KeyPress>", self._hotkeys, add="+")
         self.bind("<Configure>", self._on_resize)
-        self.bind("<FocusIn>", lambda e: ANIM.__setitem__("active", True))
-        self.bind("<FocusOut>", lambda e: self.after(300, self._maybe_pause))
-        self.bind("<Unmap>", lambda e: ANIM.__setitem__("active", False))
-        self.bind("<Map>", lambda e: ANIM.__setitem__("active", True))
+        self.bind("<Unmap>", lambda e: ANIM.__setitem__("active", False) if e.widget is self else None)
+        self.bind("<Map>", lambda e: ANIM.__setitem__("active", True) if e.widget is self else None)
         self.after(100, self.poll)
         self.after(50, self.dark_titlebar)
         self.after(50, self._hero_tick)
@@ -1929,13 +1960,6 @@ class App(ctk.CTk):
             pass
         return "break"
 
-    def _maybe_pause(self):
-        try:
-            if self.focus_displayof() is None and not (self.worker and self.worker.is_alive()):
-                ANIM["active"] = False
-        except Exception:
-            pass
-
     def _on_resize(self, e):
         if e.widget is not self:
             return
@@ -1973,19 +1997,19 @@ class App(ctk.CTk):
                                       fg_color=T["FIELD"], selected_color=T["PINK"], selected_hover_color=T["PINK_HOVER"],
                                       unselected_color=T["FIELD"], unselected_hover_color=T["FIELD_BORDER"],
                                       text_color=T["TEXT"], text_color_disabled=T["MUTED"],
-                                      font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"))
+                                      font=ctk.CTkFont(family=UI_FONT, size=12, weight="bold"))
 
     def hint(self, parent, text, **grid):
         """Подсказка, которая переносится по реальной ширине карточки (никогда не вылезает за край)."""
         lb = ctk.CTkLabel(parent, text=text, text_color=T["MUTED"], anchor="w", justify="left",
-                          font=ctk.CTkFont(family="Segoe UI", size=11))
+                          font=ctk.CTkFont(family=UI_FONT, size=11))
         lb.grid(**grid)
         parent.bind("<Configure>", lambda e, l=lb: l.configure(wraplength=max(200, e.width - 48)), add="+")
         return lb
 
     def label(self, parent, text, size=11, bold=True, color=None, **kw):
         return ctk.CTkLabel(parent, text=text, text_color=color or T["MUTED"],
-                            font=ctk.CTkFont(family="Segoe UI", size=size, weight="bold" if bold else "normal"), **kw)
+                            font=ctk.CTkFont(family=UI_FONT, size=size, weight="bold" if bold else "normal"), **kw)
 
     # ---- меню ----
     def menu_items(self, name):
@@ -2044,8 +2068,8 @@ class App(ctk.CTk):
         self._hero_bars = []
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
-        f_body = ctk.CTkFont(family="Segoe UI", size=13)
-        f_small = ctk.CTkFont(family="Segoe UI", size=11)
+        f_body = ctk.CTkFont(family=UI_FONT, size=13)
+        f_small = ctk.CTkFont(family=UI_FONT, size=11)
 
         bar = ctk.CTkFrame(self, fg_color=T["BG"], corner_radius=0, height=44)
         bar.grid(row=0, column=0, sticky="ew")
@@ -2056,20 +2080,20 @@ class App(ctk.CTk):
             tk.Label(bar, image=self._bar_logo, bg=T["BG"], bd=0).pack(side="left", padx=(24, 8), pady=12)
         else:
             ctk.CTkLabel(bar, text="", width=10, height=10, corner_radius=5, fg_color=T["PINK"]).pack(side="left", padx=(24, 8), pady=17)
-        ctk.CTkLabel(bar, text="Whispy", text_color=T["TEXT"], font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold")).pack(side="left", padx=(0, 18))
+        ctk.CTkLabel(bar, text="Whispy", text_color=T["TEXT"], font=ctk.CTkFont(family=UI_FONT, size=13, weight="bold")).pack(side="left", padx=(0, 18))
         self.menu_btns = {}
         for name in ("Файл", "Правка", "Вид", "ИИ", "Помощь"):
             b = GhostButton(bar, name, lambda n=name: self.open_menu(n, self.menu_btns[n]), width=74, height=30, bg=T["BG"],
-                            text_color=T["MUTED"], radius=15, font=("Segoe UI", 12, "bold"))
+                            text_color=T["MUTED"], radius=15, font=(UI_FONT, 12, "bold"))
             b.set_plain()
             b.pack(side="left", padx=2, pady=7)
             self.menu_btns[name] = b
         self.theme_btn = GhostButton(bar, "Светлая" if self.theme == "dark" else "Тёмная", self.toggle_theme, width=112, height=30,
-                                     bg=T["BG"], text_color=T["MUTED"], radius=15, font=("Segoe UI", 11, "bold"),
+                                     bg=T["BG"], text_color=T["MUTED"], radius=15, font=(UI_FONT, 11, "bold"),
                                      icon="sun" if self.theme == "dark" else "moon", icon_size=15)
         self.theme_btn.pack(side="right", padx=(0, 24), pady=7)
         self.files_btn = GhostButton(bar, "Мои файлы", self.show_files, width=126, height=30, bg=T["BG"], text_color=T["MUTED"],
-                                     radius=15, font=("Segoe UI", 11, "bold"), icon="folder", icon_size=15)
+                                     radius=15, font=(UI_FONT, 11, "bold"), icon="folder", icon_size=15)
         self.files_btn.pack(side="right", padx=(0, 8), pady=7)
 
         self.scroll = ctk.CTkScrollableFrame(self, fg_color=T["BG"], corner_radius=0, scrollbar_button_color=T["FIELD_BORDER"],
@@ -2123,7 +2147,7 @@ class App(ctk.CTk):
         self.chip.grid(row=0, column=1, padx=(0, 14), pady=(18, 6))
         self.status_lbl = ctk.CTkLabel(prog, text="Вставь ссылку и нажми кнопку.", font=f_body, text_color=T["TEXT"], anchor="w")
         self.status_lbl.grid(row=0, column=2, sticky="ew", pady=(18, 6))
-        self.pct_lbl = ctk.CTkLabel(prog, text="", font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"), text_color=T["PINK"], width=48, anchor="e")
+        self.pct_lbl = ctk.CTkLabel(prog, text="", font=ctk.CTkFont(family=UI_FONT, size=13, weight="bold"), text_color=T["PINK"], width=48, anchor="e")
         self.pct_lbl.grid(row=0, column=3, padx=(8, 8), pady=(18, 6))
         self.cancel_btn = GhostButton(prog, "Стоп", self.stop, width=80, height=30, bg=T["CARD"], text_color=T["MUTED"], accent=T["ERR"])
         self.cancel_btn.grid(row=0, column=4, padx=(0, 22), pady=(18, 6))
@@ -2138,7 +2162,7 @@ class App(ctk.CTk):
         out.grid_columnconfigure(0, weight=1)
         top = ctk.CTkFrame(out, fg_color="transparent")
         top.grid(row=0, column=0, sticky="ew", padx=22, pady=(16, 8))
-        self.title_lbl = ctk.CTkLabel(top, text=self.meta_title or "ТЕКСТ", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+        self.title_lbl = ctk.CTkLabel(top, text=self.meta_title or "ТЕКСТ", font=ctk.CTkFont(family=UI_FONT, size=11, weight="bold"),
                                       text_color=T["MUTED"], anchor="w")
         self.title_lbl.pack(side="left", fill="x", expand=True)
         self.count_lbl = ctk.CTkLabel(top, text=f"{len(self.all_lines)} строк" if self.all_lines else "", font=f_small, text_color=T["MUTED"])
@@ -2163,14 +2187,14 @@ class App(ctk.CTk):
         aiflow = Flow(ai, gap=10, vgap=10)
         aiflow.grid(row=1, column=0, sticky="ew", padx=22, pady=(0, 6))
         self.ai_seg = aiflow.add(self.seg(aiflow, AI_TYPES, self.ai_var))
-        self.ai_api_btn = aiflow.add(GradientButton(aiflow, "Сделать через API", self.run_ai_api, width=170, height=38, bg=T["CARD"], font=("Segoe UI", 12, "bold")))
+        self.ai_api_btn = aiflow.add(GradientButton(aiflow, "Сделать через API", self.run_ai_api, width=170, height=38, bg=T["CARD"], font=(UI_FONT, 12, "bold")))
         self.ai_copy_btn = aiflow.add(GhostButton(aiflow, "Скопировать промпт + текст", lambda: self.copy_ai_prompt(), width=230, height=38, bg=T["CARD"]))
         self.ai_open_btn = aiflow.add(GhostButton(aiflow, "Открыть Claude", lambda: webbrowser.open("https://claude.ai/new"), width=140, height=38, bg=T["CARD"]))
         self.ai_result_btn = aiflow.add(GhostButton(aiflow, "Открыть результат", self.open_ai_file, width=160, height=38, bg=T["CARD"]))
-        self.ai_key_btn = aiflow.add(GhostButton(aiflow, "", self.ask_api_key, width=38, height=38, bg=T["CARD"], text_color=T["MUTED"], radius=19,
-                                                 icon="gear", icon_size=17))
+        self.ai_key_btn = aiflow.add(GhostButton(aiflow, "API-ключ", self.ask_api_key, width=118, height=38, bg=T["CARD"],
+                                                 text_color=T["MUTED"], icon="key", icon_size=16))
         self.hint(ai, "Результат — интерактивная страница в стиле Whispy: карточки, таблица, схема, слайды со стрелками или инфографика. "
-                      "Нужен API-ключ (кнопка с шестерёнкой, вводится один раз). Без ключа — скопируй промпт и вставь в Claude.",
+                      "Нужен API-ключ (кнопка «API-ключ», вводится один раз). Без ключа — скопируй промпт и вставь в Claude.",
                   row=2, column=0, sticky="ew", padx=22, pady=(0, 16))
 
         bottom = Flow(root, gap=10, vgap=8)
@@ -2235,19 +2259,27 @@ class App(ctk.CTk):
     def _draw_hero(self, e):
         w, h = max(e.width, 200), 140
         chip_text = f"v{APP_VERSION}  ·  субтитры + whisper + спикеры + ИИ"
-        f = tkfont.Font(family="Segoe UI", size=10, weight="bold")
+        f = tkfont.Font(family=UI_FONT, size=10, weight="bold")
         img, cw = hero_image(w, h, chip_text, f)
         self._hero_img = ImageTk.PhotoImage(img)
         self.hero.delete("all")
         self.hero.create_image(0, 0, anchor="nw", image=self._hero_img)
         tx = 110 if logo_image(64) is not None else 30
-        self.hero.create_text(tx, 48, anchor="w", text="Whispy", fill=T["HERO_TEXT"], font=("Segoe UI", 30, "bold"))
+        self.hero.create_text(tx, 48, anchor="w", text="Whispy", fill=T["HERO_TEXT"], font=(UI_FONT, 30, "bold"))
         self.hero.create_text(tx, 84, anchor="w", text="YouTube-ссылка → текст с таймкодами и спикерами → главное через ИИ. Локально и бесплатно.",
-                              fill=T["HERO_SUB"], font=("Segoe UI", 12))
-        self.hero.create_text(30 + cw / 2, 115, text=chip_text, fill=T["HERO_SUB"], font=("Segoe UI", 10, "bold"))
+                              fill=T["HERO_SUB"], font=(UI_FONT, 12))
+        self.hero.create_text(30 + cw / 2, 115, text=chip_text, fill=T["HERO_SUB"], font=(UI_FONT, 10, "bold"))
         self._hero_bars = []
         bars, bw, gap = 9, 8, 7
-        x = w - (bars * bw + (bars - 1) * gap) - 40
+        sub_w = tkfont.Font(family=UI_FONT, size=12).measure("YouTube-ссылка → текст с таймкодами и спикерами → главное через ИИ. Локально и бесплатно.")
+        bars_w = bars * bw + (bars - 1) * gap
+        x = w - bars_w - 40
+        if x < tx + sub_w + 24:
+            bars = 5
+            bars_w = bars * bw + (bars - 1) * gap
+            x = w - bars_w - 40
+        if x < tx + sub_w + 24:
+            return  # места нет — волну не рисуем, текст важнее
         c1, c2 = GRAD()
         for i in range(bars):
             col = rgb_hex(mix(c1, c2, i / (bars - 1)))
@@ -2587,7 +2619,7 @@ class App(ctk.CTk):
     def toast(self, text):
         if self._toast is None or not self._toast.winfo_exists():
             self._toast = ctk.CTkLabel(self, text=text, height=38, corner_radius=19, padx=20, fg_color=T["TOAST"], text_color=T["TOAST_TEXT"],
-                                       font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"))
+                                       font=ctk.CTkFont(family=UI_FONT, size=12, weight="bold"))
         self._toast.configure(text=text, fg_color=T["TOAST"], text_color=T["TOAST_TEXT"])
         self._toast.place(relx=0.5, rely=1.0, y=-24, anchor="s")
         self._toast.lift()
