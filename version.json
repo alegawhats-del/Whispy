@@ -1,6 +1,6 @@
 {
-  "version": "2.4.0",
+  "version": "2.5.0",
   "date": "2026-11-05",
-  "notes": "• Интерфейс «жидкое стекло»: цветной фон, стеклянные карточки с кромкой и тенью\n• Кнопки подстраиваются под длину текста\n• Руководство с новыми снимками экрана",
-  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.4.0/Whispy-Setup-2.4.0.exe"
+  "notes": "• ИИ-ассистент работает с любым провайдером: Anthropic, OpenAI, Google Gemini, DeepSeek, Mistral, Groq, xAI, OpenRouter, Ollama (локально, бесплатно), свой сервер\n• Окно «Настроить ИИ»: провайдер, модель, ключ, адрес; ключи хранятся отдельно для каждого провайдера",
+  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.5.0/Whispy-Setup-2.5.0.exe"
 }
