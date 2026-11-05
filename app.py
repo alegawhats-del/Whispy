@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.5.0"
+APP_VERSION = "2.5.1"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -1504,10 +1504,23 @@ class FilesPanel(Panel):
 
 
 class AIPanel(Panel):
-    """Настройки ИИ: провайдер, модель, ключ, адрес сервера."""
+    """Настройки ИИ: провайдер, модель, ключ. Адрес сервера подставляется сам (виден только для локальных вариантов)."""
+
+    KEY_STEPS = {
+        "Anthropic (Claude)": "1. «Где взять ключ» → войди (почта или Google).\n2. Слева «API Keys» → «Create Key» → название любое → «Create».\n3. Скопируй ключ (sk-ant-…) — показывается один раз — и вставь сюда.\n4. Нужен баланс: «Billing» → пополнить от 5 $.",
+        "OpenAI (GPT)": "1. «Где взять ключ» → войди.\n2. «Create new secret key» → «Create» → скопируй (sk-…).\n3. Нужен баланс: Settings → Billing → пополнить от 5 $.",
+        "Google Gemini": "1. «Где взять ключ» → войди в Google-аккаунт.\n2. «Create API key» → скопируй (AIza…).\n3. Есть бесплатный лимит — платить не нужно.",
+        "DeepSeek": "1. «Где взять ключ» → регистрация по почте.\n2. Слева «API keys» → «Create new API key» → скопируй (sk-…).\n3. Очень дёшево, нужно пополнить «Top up».",
+        "Mistral": "1. «Где взять ключ» → регистрация.\n2. «API Keys» → «Create new key» → скопируй.\n3. Есть бесплатный тариф Experiment.",
+        "Groq (быстро, бесплатно)": "1. «Где взять ключ» → войди через Google.\n2. «Create API Key» → название любое → скопируй (gsk_…).\n3. Бесплатно, с лимитом запросов в минуту.",
+        "xAI (Grok)": "1. «Где взять ключ» → войди (X/Google).\n2. «API Keys» → «Create API key» → скопируй (xai-…).\n3. Нужно пополнить баланс.",
+        "OpenRouter (любая модель)": "1. «Где взять ключ» → войди через Google.\n2. «Create Key» → скопируй (sk-or-…).\n3. Один ключ — сотни моделей: в поле «Модель» любое имя с openrouter.ai/models.",
+        "Ollama (локально)": "Бесплатно и без интернета:\n1. «Где взять ключ» → скачай и установи Ollama.\n2. В командной строке: ollama pull llama3.1\n3. Ключ не нужен — просто «Сохранить».",
+        "Свой сервер (OpenAI API)": "Любой OpenAI-совместимый сервер (LM Studio, vLLM, LocalAI):\nукажи адрес вида http://адрес:порт/v1/chat/completions и ключ, если сервер его требует.",
+    }
 
     def __init__(self, master):
-        super().__init__(master, 600, 545)
+        super().__init__(master, 600, 560)
         self.header("sparkle", T["VIOLET"], T["PINK_SOFT"], "Настроить ИИ")
         cfg = master.ai_cfg
         f_lab = ctk.CTkFont(family=UI_FONT, size=11, weight="bold")
@@ -1521,24 +1534,27 @@ class AIPanel(Panel):
         ctk.CTkOptionMenu(box, variable=self.prov, values=list(AI_PROVIDERS.keys()), height=38, corner_radius=12, font=f_in,
                           fg_color=T["FIELD"], button_color=T["VIOLET"], button_hover_color=T["PINK"], text_color=T["TEXT"],
                           dropdown_fg_color=T["CARD"], dropdown_text_color=T["TEXT"], dropdown_hover_color=T["PINK_SOFT"],
-                          dropdown_font=f_in, command=self._on_provider).grid(row=1, column=0, sticky="ew", pady=(4, 12))
-
-        ctk.CTkLabel(box, text="МОДЕЛЬ", text_color=T["MUTED"], font=f_lab, anchor="w").grid(row=2, column=0, sticky="w")
-        self.model = tk.StringVar(value=cfg.get("model", ""))
-        self._entry(box, self.model, f_in).grid(row=3, column=0, sticky="ew", pady=(4, 12))
+                          dropdown_font=f_in, command=self._on_provider).grid(row=1, column=0, sticky="ew", pady=(4, 10))
 
         self.key_lbl = ctk.CTkLabel(box, text="API-КЛЮЧ", text_color=T["MUTED"], font=f_lab, anchor="w")
-        self.key_lbl.grid(row=4, column=0, sticky="w")
-        self.key = tk.StringVar(value=cfg.get("keys", {}).get(self.prov.get(), ""))
+        self.key_lbl.grid(row=2, column=0, sticky="w")
+        self.key = tk.StringVar()
         self.key_entry = self._entry(box, self.key, f_in, secret=True)
-        self.key_entry.grid(row=5, column=0, sticky="ew", pady=(4, 12))
+        self.key_entry.grid(row=3, column=0, sticky="ew", pady=(4, 10))
 
-        ctk.CTkLabel(box, text="АДРЕС СЕРВЕРА (можно не менять)", text_color=T["MUTED"], font=f_lab, anchor="w").grid(row=6, column=0, sticky="w")
-        self.base = tk.StringVar(value=cfg.get("base", ""))
-        self._entry(box, self.base, f_in).grid(row=7, column=0, sticky="ew", pady=(4, 8))
+        ctk.CTkLabel(box, text="МОДЕЛЬ (можно не менять)", text_color=T["MUTED"], font=f_lab, anchor="w").grid(row=4, column=0, sticky="w")
+        self.model = tk.StringVar()
+        self._entry(box, self.model, f_in).grid(row=5, column=0, sticky="ew", pady=(4, 10))
 
-        self.hint = ctk.CTkLabel(box, text="", text_color=T["MUTED"], font=ctk.CTkFont(family=UI_FONT, size=11), anchor="w", justify="left", wraplength=520)
-        self.hint.grid(row=8, column=0, sticky="w")
+        self.base_lbl = ctk.CTkLabel(box, text="АДРЕС СЕРВЕРА", text_color=T["MUTED"], font=f_lab, anchor="w")
+        self.base_lbl.grid(row=6, column=0, sticky="w")
+        self.base = tk.StringVar()
+        self.base_entry = self._entry(box, self.base, f_in)
+        self.base_entry.grid(row=7, column=0, sticky="ew", pady=(4, 10))
+
+        self.hint = ctk.CTkLabel(box, text="", text_color=T["MUTED"], font=ctk.CTkFont(family=UI_FONT, size=12), anchor="nw",
+                                 justify="left", wraplength=530)
+        self.hint.grid(row=8, column=0, sticky="nw")
 
         btns = ctk.CTkFrame(self.body, fg_color="transparent")
         btns.pack(fill="x", padx=18, pady=(6, 8), side="bottom")
@@ -1546,7 +1562,7 @@ class AIPanel(Panel):
         GhostButton(btns, "Отмена", lambda: self.close(None), width=110, height=40, bg=T["CARD"]).pack(side="right", padx=(0, 6))
         self.keysite_btn = GhostButton(btns, "Где взять ключ", self._open_site, width=150, height=40, bg=T["CARD"], icon="key", icon_size=15)
         self.keysite_btn.pack(side="left")
-        self._on_provider(self.prov.get(), keep=True)
+        self._on_provider(self.prov.get(), first=True)
         self.bind("<Return>", lambda e: self._save())
 
     def _entry(self, parent, var, font, secret=False):
@@ -1556,23 +1572,25 @@ class AIPanel(Panel):
         e.bind("<FocusOut>", lambda ev, w=e: w.configure(border_color=T["FIELD_BORDER"]))
         return e
 
-    def _on_provider(self, name, keep=False):
+    def _on_provider(self, name, first=False):
         proto, base, model, need_key, site = AI_PROVIDERS[name]
-        if not keep or not self.model.get():
-            self.model.set(model)
-        if not keep or not self.base.get():
-            self.base.set(base)
-        self.key.set(self.app.ai_cfg.get("keys", {}).get(name, ""))
+        cfg = self.app.ai_cfg
+        saved_same = first and cfg.get("provider") == name
+        self.model.set((cfg.get("model") if saved_same else "") or model)
+        self.base.set((cfg.get("base") if saved_same else "") or base)
+        self.key.set(cfg.get("keys", {}).get(name, ""))
         self.key_entry.configure(state="normal" if need_key else "disabled")
         self.key_lbl.configure(text="API-КЛЮЧ" if need_key else "API-КЛЮЧ — не нужен")
-        self.keysite_btn.configure(state="normal" if site else "disabled")
-        tips = {
-            "Ollama (локально)": "Бесплатно и офлайн: поставь Ollama, выполни «ollama pull llama3.1» (или любую модель) — и всё работает без ключа.",
-            "OpenRouter (любая модель)": "Один ключ — сотни моделей. В поле «Модель» укажи любую с openrouter.ai/models, например openai/gpt-5 или google/gemini-2.5-pro.",
-            "Groq (быстро, бесплатно)": "Бесплатный тариф с лимитами, очень быстрые ответы. Модели: llama-3.3-70b-versatile, qwen-qwq-32b.",
-            "Свой сервер (OpenAI API)": "Любой сервер с OpenAI-совместимым API (LM Studio, vLLM, LocalAI): укажи адрес …/v1/chat/completions.",
-        }
-        self.hint.configure(text=tips.get(name, "Ключ хранится только на этом компьютере. Для каждого провайдера — свой ключ."))
+        self.keysite_btn.configure(text="Где взять ключ" if need_key else "Скачать Ollama" if "Ollama" in name else "Где взять ключ",
+                                   state="normal" if site else "disabled")
+        # адрес сервера подставляется сам; показываем поле только для локальных вариантов
+        if "localhost" in base:
+            self.base_lbl.grid()
+            self.base_entry.grid()
+        else:
+            self.base_lbl.grid_remove()
+            self.base_entry.grid_remove()
+        self.hint.configure(text=self.KEY_STEPS.get(name, "") + "\n\nКлюч хранится только на этом компьютере.")
 
     def _open_site(self):
         site = AI_PROVIDERS[self.prov.get()][4]
@@ -1582,9 +1600,10 @@ class AIPanel(Panel):
     def _save(self):
         cfg = self.app.ai_cfg
         name = self.prov.get()
+        proto, base, *_ = AI_PROVIDERS[name]
         cfg["provider"] = name
         cfg["model"] = self.model.get().strip()
-        cfg["base"] = self.base.get().strip()
+        cfg["base"] = self.base.get().strip() if "localhost" in base else ""
         cfg.setdefault("keys", {})[name] = self.key.get().strip()
         self.close(True)
 
