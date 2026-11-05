@@ -1,6 +1,6 @@
 {
-  "version": "2.3.4",
+  "version": "2.3.5",
   "date": "2026-11-05",
-  "notes": "• После обновления программа запускается сама",
-  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.3.4/Whispy-Setup-2.3.4.exe"
+  "notes": "• Все значки на кнопках — нарисованные иконки вместо символов шрифта\n• Анимации замирают, когда окно не в фокусе или свёрнуто",
+  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.3.5/Whispy-Setup-2.3.5.exe"
 }
