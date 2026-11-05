@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.3.7"
+APP_VERSION = "2.4.0"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -703,11 +703,13 @@ class GradientButton(tk.Canvas):
     def __init__(self, master, text, command, width=200, height=50, bg=None, font=None, icon=None, **kw):
         bg = bg or T["CARD"]
         g = self.GLOW
+        self._font = font or (UI_FONT, 13, "bold")
+        tf0 = tkfont.Font(family=self._font[0], size=self._font[1], weight=self._font[2] if len(self._font) > 2 else "normal")
+        width = max(width, tf0.measure(text) + (24 if icon else 0) + 40)
         super().__init__(master, width=width + g * 2, height=height + g * 2, bg=bg, highlightthickness=0, bd=0, cursor="hand2", **kw)
         self.command = command
         self._icon_name = icon
         self._state = "normal"
-        self._font = font or (UI_FONT, 13, "bold")
         c1, c2 = GRAD()
         self._frames = [ImageTk.PhotoImage(pill(width, height, c1, c2, bg, brightness=1.0 + 0.12 * i / (self.FRAMES - 1), glow=g))
                         for i in range(self.FRAMES)]
@@ -794,11 +796,15 @@ class GhostButton(tk.Canvas):
         fill = fill or bg
         text_color = text_color or T["TEXT"]
         accent = accent or T["PINK"]
+        self._font = font or (UI_FONT, 12, "bold")
+        # ширина подстраивается под текст: кнопка никогда не обрезает подпись
+        tf = tkfont.Font(family=self._font[0], size=self._font[1], weight=self._font[2] if len(self._font) > 2 else "normal")
+        need = (tf.measure(text) if text else 0) + (icon_size + 7 if icon else 0) + 30
+        width = max(width, need)
         super().__init__(master, width=width, height=height, bg=bg, highlightthickness=0, bd=0, cursor="hand2", **kw)
         self.command = command
         self._state = "normal"
         self._tc, self._accent = text_color, accent
-        self._font = font or (UI_FONT, 12, "bold")
         self._icon_name, self._icon_size = icon, icon_size
         pw, ph = int(width * 0.97), int(height * 0.97)
         pressed = Image.new("RGB", (width, height), hex_rgb(bg))
@@ -813,7 +819,6 @@ class GhostButton(tk.Canvas):
         self._icon_imgs = {}
         self._icon_id = None
         if icon:
-            tf = tkfont.Font(family=self._font[0], size=self._font[1], weight=self._font[2] if len(self._font) > 2 else "normal")
             tw = tf.measure(text) if text else 0
             gap = 7 if text else 0
             total = icon_size + gap + tw
@@ -1029,6 +1034,155 @@ class Flow(ctk.CTkFrame):
             w.grid(row=row, column=col, padx=(0, self.gap), pady=(0, self.vgap), sticky="w", **kw)
             x += rw + self.gap
             col += 1
+
+
+# ---------- «жидкое стекло»: фон страницы и стеклянные карточки ----------
+_BG_CACHE = {}
+
+
+def page_background(w, h):
+    """Мягкий цветной фон под всем окном (mesh-градиент с размытыми пятнами)."""
+    key = (w, h, T["BG"])
+    if key in _BG_CACHE:
+        return _BG_CACHE[key]
+    base = Image.new("RGB", (w, h), hex_rgb(T["BG"]))
+    blobs = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(blobs)
+    dark = T["HERO_TEXT"] == "#FFFFFF"
+    a1, a2 = (95, 80) if dark else (120, 100)
+    d.ellipse([w * 0.55, -h * 0.05, w * 1.15, h * 0.35], fill=hex_rgb(T["PINK"]) + (a1,))
+    d.ellipse([-w * 0.25, h * 0.15, w * 0.35, h * 0.6], fill=hex_rgb(T["VIOLET"]) + (a2,))
+    d.ellipse([w * 0.4, h * 0.55, w * 1.1, h * 1.05], fill=hex_rgb(T["VIOLET"]) + (a1 - 20,))
+    d.ellipse([w * 0.05, h * 0.75, w * 0.5, h * 1.15], fill=hex_rgb(T["PINK"]) + (a2 - 30,))
+    blobs = blobs.filter(ImageFilter.GaussianBlur(max(40, w * 0.12)))
+    base.paste(blobs, (0, 0), blobs)
+    _BG_CACHE.clear()
+    _BG_CACHE[key] = base
+    return base
+
+
+def glass_card_image(bg, x, y, w, h, radius=22, shadow=14):
+    """Стеклянная карточка поверх фрагмента фона: размытие, тонировка, световая кромка, мягкая тень."""
+    W, H = w + shadow * 2, h + shadow * 2
+    crop = bg.crop((x - shadow, y - shadow, x - shadow + W, y - shadow + H)).convert("RGB")
+    dark = T["HERO_TEXT"] == "#FFFFFF"
+    # тень
+    sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(sh).rounded_rectangle([shadow, shadow + 4, shadow + w, shadow + h + 4], radius=radius,
+                                         fill=(0, 0, 0, 110 if dark else 45))
+    sh = sh.filter(ImageFilter.GaussianBlur(shadow * 0.7))
+    out = crop.copy()
+    out.paste(sh, (0, 0), sh)
+    # стекло: размытый фон + тонировка цветом карточки
+    glass = crop.crop((shadow, shadow, shadow + w, shadow + h)).filter(ImageFilter.GaussianBlur(16))
+    tint = Image.new("RGB", (w, h), hex_rgb(T["CARD"]))
+    glass = Image.blend(glass, tint, 0.78 if dark else 0.72)
+    mask = rounded_mask(w, h, radius)
+    out.paste(glass, (shadow, shadow), mask)
+    # световая кромка сверху и тонкая граница
+    ring = Image.new("RGBA", (w * 2, h * 2), (0, 0, 0, 0))
+    rd = ImageDraw.Draw(ring)
+    rd.rounded_rectangle([1, 1, w * 2 - 2, h * 2 - 2], radius=radius * 2, outline=(255, 255, 255, 60 if dark else 200), width=2)
+    rd.rounded_rectangle([1, 1, w * 2 - 2, h * 2 - 2], radius=radius * 2, outline=(255, 255, 255, 0), width=0)
+    ring = ring.resize((w, h), Image.LANCZOS)
+    # кромка ярче сверху, слабее снизу
+    grad = Image.linear_gradient("L").resize((w, h))
+    ring.putalpha(Image.eval(ring.split()[3], lambda v: v).point(lambda v: v))
+    alpha = ring.split()[3]
+    alpha = Image.composite(alpha, alpha.point(lambda v: v // 3), grad.point(lambda v: 255 - v))
+    ring.putalpha(alpha)
+    out.paste(ring, (shadow, shadow), ring)
+    return out
+
+
+class GlassPage(tk.Canvas):
+    """Прокручиваемая страница с цветным фоном; карточки-стекло раскладываются по вертикали."""
+
+    def __init__(self, master, pad=20, gap=0, **kw):
+        super().__init__(master, bg=T["BG"], highlightthickness=0, bd=0, **kw)
+        self.pad, self.gap = pad, gap
+        self.items = []  # (item_id, widget)
+        self.bg_img = None
+        self._bg_pil = None
+        self._bg_id = self.create_image(0, 0, anchor="nw")
+        self._job = None
+        self.bind("<Configure>", lambda e: self.relayout())
+
+    def add(self, widget):
+        item = self.create_window(self.pad, 0, anchor="nw", window=widget)
+        self.items.append((item, widget))
+        widget.bind("<Configure>", lambda e: self.relayout(), add="+")
+        return widget
+
+    def relayout(self):
+        if self._job:
+            self.after_cancel(self._job)
+        self._job = self.after(25, self._do)
+
+    def _do(self):
+        self._job = None
+        w = self.winfo_width()
+        if w < 100:
+            return
+        y = 6
+        inner = w - self.pad * 2
+        for item, widget in self.items:
+            if isinstance(widget, GlassCard):
+                self.itemconfigure(item, width=inner)
+                self.coords(item, self.pad, y)
+            else:  # обычные виджеты — вровень с видимым краем стекла
+                self.itemconfigure(item, width=inner - GlassCard.SHADOW * 2)
+                self.coords(item, self.pad + GlassCard.SHADOW, y + 8)
+            widget.update_idletasks()
+            y += widget.winfo_reqheight() + self.gap + (0 if isinstance(widget, GlassCard) else 12)
+        total = max(y + 10, self.winfo_height())
+        if self._bg_pil is None or self._bg_pil.size != (w, total):
+            self._bg_pil = page_background(w, total)
+            self.bg_img = ImageTk.PhotoImage(self._bg_pil)
+            self.itemconfigure(self._bg_id, image=self.bg_img)
+        self.configure(scrollregion=(0, 0, w, total))
+        y = 6
+        for item, widget in self.items:
+            if isinstance(widget, GlassCard):
+                widget.render(self._bg_pil, self.pad, y, inner)
+            y += widget.winfo_reqheight() + self.gap + (0 if isinstance(widget, GlassCard) else 12)
+
+    def scroll_frac(self):
+        return self.yview()[0]
+
+
+class GlassCard(tk.Canvas):
+    """Стеклянная карточка: снаружи — стекло на фоне, внутри body (CTkFrame) для обычных виджетов."""
+    INSET = 18
+    SHADOW = 14
+
+    def __init__(self, page):
+        super().__init__(page, bg=T["BG"], highlightthickness=0, bd=0)
+        self.page = page
+        self._img = None
+        self._img_id = self.create_image(0, 0, anchor="nw")
+        self.body = ctk.CTkFrame(self, fg_color=T["CARD"], corner_radius=0)
+        self._body_id = self.create_window(self.SHADOW + self.INSET, self.SHADOW + self.INSET, anchor="nw", window=self.body)
+        self.body.bind("<Configure>", lambda e: self._fit(), add="+")
+        self._last = None
+
+    def _fit(self):
+        h = self.body.winfo_reqheight() + (self.SHADOW + self.INSET) * 2
+        if int(self["height"]) != h:
+            self.configure(height=h)
+
+    def render(self, bg, x, y, w):
+        h = self.body.winfo_reqheight() + (self.SHADOW + self.INSET) * 2
+        self.configure(width=w, height=h)
+        self.itemconfigure(self._body_id, width=w - (self.SHADOW + self.INSET) * 2)
+        key = (x, y, w, h, T["BG"])
+        if key == self._last:
+            return
+        self._last = key
+        cw, ch = w - self.SHADOW * 2, h - self.SHADOW * 2
+        img = glass_card_image(bg, x + self.SHADOW, y + self.SHADOW, cw, ch, shadow=self.SHADOW)
+        self._img = ImageTk.PhotoImage(img)
+        self.itemconfigure(self._img_id, image=self._img)
 
 
 # ---------- всплывающие окна ----------
@@ -1986,7 +2140,7 @@ class App(ctk.CTk):
         if e.widget is not self:
             return
         try:
-            self.textbox.configure(height=max(220, self.winfo_height() - 700))
+            self.textbox.configure(height=max(220, self.winfo_height() - 760))
         except Exception:
             pass
 
@@ -2089,12 +2243,13 @@ class App(ctk.CTk):
             w.destroy()
         self._hero_bars = []
         self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=0)
         self.grid_rowconfigure(1, weight=1)
         f_body = ctk.CTkFont(family=UI_FONT, size=13)
         f_small = ctk.CTkFont(family=UI_FONT, size=11)
 
         bar = ctk.CTkFrame(self, fg_color=T["BG"], corner_radius=0, height=44)
-        bar.grid(row=0, column=0, sticky="ew")
+        bar.grid(row=0, column=0, columnspan=2, sticky="ew")
         bar.grid_propagate(False)
         lg = logo_image(20)
         if lg is not None:
@@ -2118,18 +2273,19 @@ class App(ctk.CTk):
                                      radius=15, font=(UI_FONT, 11, "bold"), icon="folder", icon_size=15)
         self.files_btn.pack(side="right", padx=(0, 8), pady=7)
 
-        self.scroll = ctk.CTkScrollableFrame(self, fg_color=T["BG"], corner_radius=0, scrollbar_button_color=T["FIELD_BORDER"],
-                                             scrollbar_button_hover_color=T["PINK"])
-        self.scroll.grid(row=1, column=0, sticky="nsew")
-        self.scroll.grid_columnconfigure(0, weight=1)
-        root = self.scroll
+        self.page = GlassPage(self)
+        self.page.grid(row=1, column=0, sticky="nsew")
+        self.sb = ctk.CTkScrollbar(self, command=self.page.yview, button_color=T["FIELD_BORDER"], button_hover_color=T["PINK"], fg_color=T["BG"])
+        self.sb.grid(row=1, column=1, sticky="ns")
+        self.page.configure(yscrollcommand=self.sb.set)
+        root = self.page
 
         self.hero = tk.Canvas(root, height=140, bg=T["BG"], highlightthickness=0, bd=0)
-        self.hero.grid(row=0, column=0, sticky="ew", padx=20, pady=(4, 6))
         self.hero.bind("<Configure>", self._draw_hero)
+        self.page.add(self.hero)
 
-        card = self.card(root)
-        card.grid(row=1, column=0, sticky="ew", padx=20, pady=6)
+        gc = self.page.add(GlassCard(self.page))
+        card = gc.body
         card.grid_columnconfigure(0, weight=1)
         self.label(card, "ССЫЛКА НА ВИДЕО").grid(row=0, column=0, sticky="w", padx=22, pady=(18, 6))
         row = ctk.CTkFrame(card, fg_color="transparent")
@@ -2160,8 +2316,7 @@ class App(ctk.CTk):
                         "«Точно» медленнее в 2–3 раза   ·   Спикеры — кто говорит в подкасте",
                   row=3, column=0, sticky="ew", padx=22, pady=(0, 18))
 
-        prog = self.card(root)
-        prog.grid(row=2, column=0, sticky="ew", padx=20, pady=6)
+        prog = self.page.add(GlassCard(self.page)).body
         prog.grid_columnconfigure(2, weight=1)
         self.wave = Wave(prog)
         self.wave.grid(row=0, column=0, padx=(22, 14), pady=(18, 6))
@@ -2179,8 +2334,7 @@ class App(ctk.CTk):
         self.sub_lbl = ctk.CTkLabel(prog, text="", font=f_small, text_color=T["MUTED"], anchor="w")
         self.sub_lbl.grid(row=2, column=0, columnspan=5, sticky="ew", padx=22, pady=(0, 14))
 
-        out = self.card(root)
-        out.grid(row=3, column=0, sticky="ew", padx=20, pady=6)
+        out = self.page.add(GlassCard(self.page)).body
         out.grid_columnconfigure(0, weight=1)
         top = ctk.CTkFrame(out, fg_color="transparent")
         top.grid(row=0, column=0, sticky="ew", padx=22, pady=(16, 8))
@@ -2190,9 +2344,9 @@ class App(ctk.CTk):
         self.count_lbl = ctk.CTkLabel(top, text=f"{len(self.all_lines)} строк" if self.all_lines else "", font=f_small, text_color=T["MUTED"])
         self.count_lbl.pack(side="right")
         self.textbox = ctk.CTkTextbox(out, font=ctk.CTkFont(family=self.mono, size=12), fg_color=T["FIELD"], text_color=T["TEXT"],
-                                      corner_radius=16, border_width=0, wrap="word", height=max(220, self.winfo_height() - 700),
+                                      corner_radius=16, border_width=0, wrap="word", height=max(220, self.winfo_height() - 760),
                                       scrollbar_button_color=T["FIELD_BORDER"], scrollbar_button_hover_color=T["PINK"])
-        self.textbox.grid(row=1, column=0, sticky="ew", padx=22, pady=(0, 18))
+        self.textbox.grid(row=1, column=0, sticky="ew", padx=22, pady=(0, 12))
         tb = self.textbox._textbox
         tb.configure(spacing1=3, spacing3=3, padx=10, pady=8, selectbackground=T["SELECT"], selectforeground="#FFFFFF")
         tb.tag_config("ts", foreground=T["PINK"])
@@ -2202,8 +2356,7 @@ class App(ctk.CTk):
         self.textbox.configure(state="disabled")
         self.render_lines()
 
-        ai = self.card(root)
-        ai.grid(row=4, column=0, sticky="ew", padx=20, pady=6)
+        ai = self.page.add(GlassCard(self.page)).body
         ai.grid_columnconfigure(0, weight=1)
         self.label(ai, "ИИ-АССИСТЕНТ  ·  ГЛАВНОЕ ИЗ ВИДЕО").grid(row=0, column=0, sticky="w", padx=22, pady=(16, 8))
         aiflow = Flow(ai, gap=10, vgap=10)
@@ -2219,11 +2372,11 @@ class App(ctk.CTk):
                       "Нужен API-ключ (кнопка «API-ключ», вводится один раз). Без ключа — скопируй промпт и вставь в Claude.",
                   row=2, column=0, sticky="ew", padx=22, pady=(0, 16))
 
-        bottom = Flow(root, gap=10, vgap=8)
-        bottom.grid(row=5, column=0, sticky="ew", padx=20, pady=(6, 18))
-        self.copy_btn = bottom.add(GhostButton(bottom, "Копировать всё", self.copy_all, width=170, height=42))
-        self.file_btn = bottom.add(GhostButton(bottom, "Открыть файл", self.open_file, width=150, height=42))
-        self.folder_btn = bottom.add(GhostButton(bottom, "Показать в папке", lambda: reveal_in_folder(self.last_path), width=160, height=42))
+        bottom = Flow(out, gap=10, vgap=8)
+        bottom.grid(row=2, column=0, sticky="ew", padx=22, pady=(0, 8))
+        self.copy_btn = bottom.add(GhostButton(bottom, "Копировать всё", self.copy_all, width=160, height=40, bg=T["CARD"], icon="doc", icon_size=15))
+        self.file_btn = bottom.add(GhostButton(bottom, "Открыть файл", self.open_file, width=140, height=40, bg=T["CARD"]))
+        self.folder_btn = bottom.add(GhostButton(bottom, "Показать в папке", lambda: reveal_in_folder(self.last_path), width=150, height=40, bg=T["CARD"], icon="folder", icon_size=15))
         self.path_lbl = bottom.add(ctk.CTkLabel(bottom, text=os.path.basename(self.last_path) if self.last_path else "", font=f_small, text_color=T["MUTED"]))
         self._scroll_target = None
         self.refresh_buttons()
@@ -2246,9 +2399,9 @@ class App(ctk.CTk):
         except Exception:
             pass
         try:
-            cv = self.scroll._parent_canvas
-            bbox = cv.bbox("all")
-            total = (bbox[3] - bbox[1]) if bbox else 0
+            cv = self.page
+            sr = cv.cget("scrollregion").split()
+            total = float(sr[3]) if len(sr) == 4 else 0
             if total <= 0:
                 return
             vis = cv.winfo_height() / total
@@ -2263,7 +2416,7 @@ class App(ctk.CTk):
     def _scroll_step(self):
         self._scroll_job = None
         try:
-            cv = self.scroll._parent_canvas
+            cv = self.page
             cur = cv.yview()[0]
             tgt = self._scroll_target
             if tgt is None:
