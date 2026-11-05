@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.3.6"
+APP_VERSION = "2.3.7"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -350,9 +350,31 @@ def open_html(path, title="Whispy"):
 
 
 def run_viewer(path, title):
+    """Окно просмотра HTML в стиле программы: тёмный заголовок Windows, иконка Whispy, фон как у приложения."""
     import webview
     url = "file:///" + os.path.abspath(path).replace("\\", "/")
-    webview.create_window(title, url, width=1120, height=820, min_size=(760, 520), background_color="#0E0913", text_select=True)
+    win = webview.create_window(title, url, width=1120, height=820, min_size=(760, 520), background_color="#0E0913", text_select=True)
+
+    def style():
+        try:
+            native = getattr(win, "native", None)
+            hwnd = int(native.Handle.ToInt64()) if native is not None and hasattr(native, "Handle") else None
+            if hwnd and sys.platform == "win32":
+                value = ctypes.c_int(1)
+                for attr in (20, 19):
+                    ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(value), ctypes.sizeof(value))
+                color = ctypes.c_int((0x13 << 16) | (0x09 << 8) | 0x0E)  # BGR от #0E0913
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(color), ctypes.sizeof(color))
+                ico = resource("whispy.ico")
+                if ico:
+                    import importlib
+                    importlib.import_module("clr")
+                    drawing = importlib.import_module("System.Drawing")
+                    native.Icon = drawing.Icon(ico)
+        except Exception:
+            pass
+
+    win.events.shown += style
     webview.start()
 
 
