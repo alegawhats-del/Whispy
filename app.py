@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.3.4"
+APP_VERSION = "2.3.5"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -555,17 +555,102 @@ def card_image(w, h, radius=18, fill=None, border=None, bg=None):
     return out
 
 
+# ---------- иконки (рисуются, не шрифтовые) ----------
+_ICON_CACHE = {}
+
+
+def icon_image(name, size, color, bg=None):
+    """Монолинейная иконка size×size цветом color на фоне bg (или прозрачная). Сглаживание ×4."""
+    key = (name, size, color, bg)
+    if key in _ICON_CACHE:
+        return _ICON_CACHE[key]
+    S = size * 4
+    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    c = hex_rgb(color) + (255,)
+    w = max(2, S // 11)  # толщина линии
+    u = S / 24.0         # единица сетки 24×24
+
+    def line(pts):
+        d.line([(x * u, y * u) for x, y in pts], fill=c, width=w, joint="curve")
+        for x, y in (pts[0], pts[-1]):
+            d.ellipse([x * u - w / 2, y * u - w / 2, x * u + w / 2, y * u + w / 2], fill=c)
+
+    if name == "folder":
+        d.rounded_rectangle([3 * u, 6 * u, 21 * u, 19 * u], radius=2.2 * u, outline=c, width=w)
+        d.rounded_rectangle([3 * u, 4 * u, 11 * u, 8 * u], radius=1.5 * u, fill=c)
+        d.rounded_rectangle([3 * u + w, 7 * u, 21 * u - w, 9.5 * u], radius=0, fill=c)
+    elif name == "sun":
+        d.ellipse([8 * u, 8 * u, 16 * u, 16 * u], outline=c, width=w)
+        for k in range(8):
+            a = math.radians(k * 45)
+            x1, y1 = 12 + 6.2 * math.cos(a), 12 + 6.2 * math.sin(a)
+            x2, y2 = 12 + 9 * math.cos(a), 12 + 9 * math.sin(a)
+            line([(x1, y1), (x2, y2)])
+    elif name == "moon":
+        d.ellipse([4 * u, 4 * u, 20 * u, 20 * u], fill=c)
+        d.ellipse([8.5 * u, 1.5 * u, 23 * u, 16 * u], fill=(0, 0, 0, 0))
+    elif name == "gear":
+        pts = []
+        for k in range(24):
+            r = 10 if (k // 3) % 2 == 0 else 7.6
+            a = math.radians(k * 15)
+            pts.append((12 * u + r * u * math.cos(a), 12 * u + r * u * math.sin(a)))
+        d.polygon(pts, fill=c)
+        d.ellipse([8.6 * u, 8.6 * u, 15.4 * u, 15.4 * u], fill=(0, 0, 0, 0))
+        d.ellipse([8.6 * u, 8.6 * u, 15.4 * u, 15.4 * u], outline=c, width=w)
+        d.ellipse([9.6 * u + w, 9.6 * u + w, 14.4 * u - w, 14.4 * u - w], fill=(0, 0, 0, 0))
+    elif name == "close":
+        line([(7, 7), (17, 17)])
+        line([(17, 7), (7, 17)])
+    elif name == "sparkle":
+        d.polygon([(12 * u, 2 * u), (14.2 * u, 9.8 * u), (22 * u, 12 * u), (14.2 * u, 14.2 * u),
+                   (12 * u, 22 * u), (9.8 * u, 14.2 * u), (2 * u, 12 * u), (9.8 * u, 9.8 * u)], fill=c)
+    elif name == "check":
+        line([(5, 12.5), (10, 17.5), (19, 7)])
+    elif name == "alert":
+        d.rounded_rectangle([10.6 * u, 4 * u, 13.4 * u, 14.5 * u], radius=1.4 * u, fill=c)
+        d.ellipse([10.4 * u, 17 * u, 13.6 * u, 20.2 * u], fill=c)
+    elif name == "question":
+        d.arc([7 * u, 4 * u, 17 * u, 14 * u], 200, 90, fill=c, width=w)
+        line([(12, 13.5), (12, 16)])
+        d.ellipse([10.4 * u, 18 * u, 13.6 * u, 21.2 * u], fill=c)
+    elif name == "doc":
+        d.rounded_rectangle([5 * u, 3 * u, 19 * u, 21 * u], radius=2 * u, outline=c, width=w)
+        for y in (9, 13, 17):
+            line([(8.5, y), (15.5, y)])
+    elif name == "play":
+        d.polygon([(8 * u, 5 * u), (19 * u, 12 * u), (8 * u, 19 * u)], fill=c)
+    elif name == "refresh":
+        d.arc([5 * u, 5 * u, 19 * u, 19 * u], 300, 240, fill=c, width=w)
+        d.polygon([(19.5 * u, 4 * u), (20.5 * u, 10.5 * u), (14 * u, 9.5 * u)], fill=c)
+    elif name == "pin":
+        d.ellipse([5 * u, 3 * u, 19 * u, 17 * u], outline=c, width=w)
+        line([(12, 17), (12, 22)])
+    out = img.resize((size, size), Image.LANCZOS)
+    if bg is not None:
+        base = Image.new("RGB", (size, size), hex_rgb(bg))
+        base.paste(out, (0, 0), out)
+        out = base
+    _ICON_CACHE[key] = out
+    return out
+
+
+ANIM = {"active": True}
+
+
 # ---------- кастомные виджеты ----------
 class GradientButton(tk.Canvas):
     """Градиентная кнопка: ховер 120 мс (ease-out), сжатие до 97 % при нажатии."""
     GLOW = 10
     FRAMES = 6
 
-    def __init__(self, master, text, command, width=200, height=50, bg=None, font=None, **kw):
+    def __init__(self, master, text, command, width=200, height=50, bg=None, font=None, icon=None, **kw):
         bg = bg or T["CARD"]
         g = self.GLOW
         super().__init__(master, width=width + g * 2, height=height + g * 2, bg=bg, highlightthickness=0, bd=0, cursor="hand2", **kw)
         self.command = command
+        self._icon_name = icon
         self._state = "normal"
         self._font = font or ("Segoe UI", 13, "bold")
         c1, c2 = GRAD()
@@ -580,7 +665,18 @@ class GradientButton(tk.Canvas):
         self._target = 0
         self._job = None
         self._img_id = self.create_image(0, 0, anchor="nw", image=self._frames[0])
-        self._txt_id = self.create_text((width + g * 2) / 2, (height + g * 2) / 2, text=text, fill="#FFFFFF", font=self._font)
+        cx, cy = (width + g * 2) / 2, (height + g * 2) / 2
+        self._icon_id = None
+        if icon:
+            tf = tkfont.Font(family=self._font[0], size=self._font[1], weight=self._font[2] if len(self._font) > 2 else "normal")
+            tw = tf.measure(text)
+            isz = 16
+            x0 = cx - (tw + isz + 8) / 2
+            self._icon_img = ImageTk.PhotoImage(icon_image(icon, isz, "#FFFFFF"))
+            self._icon_id = self.create_image(x0, cy, anchor="w", image=self._icon_img)
+            self._txt_id = self.create_text(x0 + isz + 8, cy, anchor="w", text=text, fill="#FFFFFF", font=self._font)
+        else:
+            self._txt_id = self.create_text(cx, cy, text=text, fill="#FFFFFF", font=self._font)
         self.bind("<Enter>", lambda e: self._go(self.FRAMES - 1))
         self.bind("<Leave>", lambda e: self._go(0))
         self.bind("<ButtonPress-1>", self._press)
@@ -620,11 +716,15 @@ class GradientButton(tk.Canvas):
             if self._state == "disabled":
                 self.itemconfigure(self._img_id, image=self._disabled)
                 self.itemconfigure(self._txt_id, fill=T["MUTED"])
+                if self._icon_id:
+                    self.itemconfigure(self._icon_id, state="hidden")
                 super().configure(cursor="arrow")
             else:
                 self._frame = 0
                 self.itemconfigure(self._img_id, image=self._frames[0])
                 self.itemconfigure(self._txt_id, fill="#FFFFFF")
+                if self._icon_id:
+                    self.itemconfigure(self._icon_id, state="normal")
                 super().configure(cursor="hand2")
         if kw:
             super().configure(**kw)
@@ -634,7 +734,7 @@ class GhostButton(tk.Canvas):
     """Кнопка с тонкой рамкой; ховер — заливка и акцентный текст, нажатие — лёгкое сжатие."""
 
     def __init__(self, master, text, command, width=170, height=42, bg=None, font=None, text_color=None,
-                 accent=None, radius=14, fill=None, **kw):
+                 accent=None, radius=14, fill=None, icon=None, icon_size=16, **kw):
         bg = bg or T["BG"]
         fill = fill or bg
         text_color = text_color or T["TEXT"]
@@ -644,6 +744,7 @@ class GhostButton(tk.Canvas):
         self._state = "normal"
         self._tc, self._accent = text_color, accent
         self._font = font or ("Segoe UI", 12, "bold")
+        self._icon_name, self._icon_size = icon, icon_size
         pw, ph = int(width * 0.97), int(height * 0.97)
         pressed = Image.new("RGB", (width, height), hex_rgb(bg))
         pressed.paste(flat_pill(pw, ph, T["PINK_SOFT"], bg, radius=radius, border=accent), ((width - pw) // 2, (height - ph) // 2))
@@ -654,7 +755,20 @@ class GhostButton(tk.Canvas):
             "disabled": ImageTk.PhotoImage(flat_pill(width, height, fill, bg, radius=radius, border=T["BORDER"])),
         }
         self._img_id = self.create_image(0, 0, anchor="nw", image=self._imgs["normal"])
-        self._txt_id = self.create_text(width / 2, height / 2, text=text, fill=text_color, font=self._font)
+        self._icon_imgs = {}
+        self._icon_id = None
+        if icon:
+            tf = tkfont.Font(family=self._font[0], size=self._font[1], weight=self._font[2] if len(self._font) > 2 else "normal")
+            tw = tf.measure(text) if text else 0
+            gap = 7 if text else 0
+            total = icon_size + gap + tw
+            x0 = (width - total) / 2
+            for k, col in (("normal", text_color), ("hover", accent), ("disabled", T["BORDER"])):
+                self._icon_imgs[k] = ImageTk.PhotoImage(icon_image(icon, icon_size, col))
+            self._icon_id = self.create_image(x0, height / 2, anchor="w", image=self._icon_imgs["normal"])
+            self._txt_id = self.create_text(x0 + icon_size + gap, height / 2, anchor="w", text=text, fill=text_color, font=self._font)
+        else:
+            self._txt_id = self.create_text(width / 2, height / 2, text=text, fill=text_color, font=self._font)
         self._hovering = False
         self.bind("<Enter>", lambda e: self._hover(True))
         self.bind("<Leave>", lambda e: self._hover(False))
@@ -671,6 +785,8 @@ class GhostButton(tk.Canvas):
             return
         self.itemconfigure(self._img_id, image=self._imgs["hover" if on else "normal"])
         self.itemconfigure(self._txt_id, fill=self._accent if on else self._tc)
+        if self._icon_id:
+            self.itemconfigure(self._icon_id, image=self._icon_imgs["hover" if on else "normal"])
 
     def _release(self, e):
         if self._state != "normal":
@@ -692,6 +808,8 @@ class GhostButton(tk.Canvas):
             disabled = self._state == "disabled"
             self.itemconfigure(self._img_id, image=self._imgs["disabled" if disabled else "normal"])
             self.itemconfigure(self._txt_id, fill=T["BORDER"] if disabled else self._tc)
+            if self._icon_id:
+                self.itemconfigure(self._icon_id, image=self._icon_imgs["disabled" if disabled else "normal"])
             super().configure(cursor="arrow" if disabled else "hand2")
         if kw:
             super().configure(**kw)
@@ -797,7 +915,7 @@ class Wave(tk.Canvas):
     def _tick(self):
         if not self.winfo_exists():
             return
-        if self.active:
+        if self.active and ANIM["active"]:
             self.phase += 0.35
             self._draw()
         self.after(60, self._tick)
@@ -969,12 +1087,12 @@ class Panel(tk.Toplevel):
     def header(self, glyph, color, soft, title):
         top = ctk.CTkFrame(self.body, fg_color="transparent")
         top.pack(fill="x", padx=14, pady=(10, 4))
-        ctk.CTkLabel(top, text=glyph, width=40, height=40, corner_radius=20, fg_color=soft, text_color=color,
-                     font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold")).pack(side="left")
+        self._badge = ImageTk.PhotoImage(icon_image(glyph, 20, color, bg=soft))
+        ctk.CTkLabel(top, text="", image=self._badge, width=40, height=40, corner_radius=20, fg_color=soft).pack(side="left")
         ctk.CTkLabel(top, text=title, text_color=T["TEXT"], anchor="w",
                      font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold")).pack(side="left", padx=12, fill="x", expand=True)
-        GhostButton(top, "✕", lambda: self.close(None), width=34, height=34, bg=T["CARD"], text_color=T["MUTED"],
-                    accent=T["ERR"], radius=17).pack(side="right")
+        GhostButton(top, "", lambda: self.close(None), width=34, height=34, bg=T["CARD"], text_color=T["MUTED"],
+                    accent=T["ERR"], radius=17, icon="close", icon_size=14).pack(side="right")
         return top
 
 
@@ -988,8 +1106,8 @@ class Dialog(Panel):
         lines = sum(max(1, math.ceil(f.measure(p) / wrap)) if p else 1 for p in message.split("\n"))
         H = 150 + lines * 21 + (64 if kind == "input" else 0)
         super().__init__(master, W, H)
-        glyph, col, soft = {"info": ("✓", T["OK"], T["OK_SOFT"]), "error": ("!", T["ERR"], T["ERR_SOFT"]),
-                            "confirm": ("?", T["PINK"], T["PINK_SOFT"]), "input": ("✦", T["VIOLET"], T["PINK_SOFT"])}[kind]
+        glyph, col, soft = {"info": ("check", T["OK"], T["OK_SOFT"]), "error": ("alert", T["ERR"], T["ERR_SOFT"]),
+                            "confirm": ("question", T["PINK"], T["PINK_SOFT"]), "input": ("sparkle", T["VIOLET"], T["PINK_SOFT"])}[kind]
         self.header(glyph, col, soft, title)
         ctk.CTkLabel(self.body, text=message, text_color=T["MUTED"], anchor="w", justify="left", wraplength=wrap,
                      font=ctk.CTkFont(family="Segoe UI", size=12)).pack(fill="x", padx=28, pady=(6, 4))
@@ -1102,12 +1220,12 @@ class FilesPanel(Panel):
 
     def __init__(self, master):
         super().__init__(master, 780, 580, modal=False)
-        self.header("▤", T["VIOLET"], T["PINK_SOFT"], "Мои файлы")
+        self.header("folder", T["VIOLET"], T["PINK_SOFT"], "Мои файлы")
         ctk.CTkLabel(self.body, text=OUT_DIR, text_color=T["MUTED"], anchor="w", font=ctk.CTkFont(family="Segoe UI", size=11)).pack(fill="x", padx=28, pady=(0, 6))
         tools = ctk.CTkFrame(self.body, fg_color="transparent")
         tools.pack(fill="x", padx=14, pady=(0, 6))
-        GhostButton(tools, "Открыть папку", lambda: open_path(OUT_DIR), width=140, height=34, bg=T["CARD"]).pack(side="left")
-        GhostButton(tools, "Обновить", self.refresh, width=110, height=34, bg=T["CARD"]).pack(side="left", padx=8)
+        GhostButton(tools, "Открыть папку", lambda: open_path(OUT_DIR), width=150, height=34, bg=T["CARD"], icon="folder", icon_size=15).pack(side="left")
+        GhostButton(tools, "Обновить", self.refresh, width=118, height=34, bg=T["CARD"], icon="refresh", icon_size=15).pack(side="left", padx=8)
         self.count = ctk.CTkLabel(tools, text="", text_color=T["MUTED"], font=ctk.CTkFont(family="Segoe UI", size=11))
         self.count.pack(side="right")
         self.list = ctk.CTkScrollableFrame(self.body, fg_color=T["FIELD"], corner_radius=14,
@@ -1119,12 +1237,13 @@ class FilesPanel(Panel):
     def refresh(self):
         for w in self.list.winfo_children():
             w.destroy()
+        self._row_icons = []
         files = []
         for ext in ("*.txt", "*.html", "*.md"):
             files += glob.glob(os.path.join(OUT_DIR, ext))
         files.sort(key=os.path.getmtime, reverse=True)
         self.count.configure(text=f"{len(files)} файлов")
-        kinds = {".txt": ("T", "Транскрипт"), ".html": ("✦", "ИИ · страница"), ".md": ("✦", "ИИ · Markdown")}
+        kinds = {".txt": ("doc", "Транскрипт"), ".html": ("sparkle", "ИИ · страница"), ".md": ("sparkle", "ИИ · Markdown")}
         f_name = ctk.CTkFont(family="Segoe UI", size=12, weight="bold")
         f_meta = ctk.CTkFont(family="Segoe UI", size=10)
         if not files:
@@ -1136,8 +1255,9 @@ class FilesPanel(Panel):
             row = ctk.CTkFrame(self.list, fg_color=T["CARD"], corner_radius=12)
             row.grid(row=i, column=0, sticky="ew", padx=8, pady=4)
             row.grid_columnconfigure(1, weight=1)
-            ctk.CTkLabel(row, text=glyph, width=34, height=34, corner_radius=17, fg_color=T["PINK_SOFT"], text_color=T["PINK"],
-                         font=f_name).grid(row=0, column=0, rowspan=2, padx=(10, 10), pady=8)
+            im = ImageTk.PhotoImage(icon_image(glyph, 16, T["PINK"], bg=T["PINK_SOFT"]))
+            self._row_icons.append(im)
+            ctk.CTkLabel(row, text="", image=im, width=34, height=34, corner_radius=17, fg_color=T["PINK_SOFT"]).grid(row=0, column=0, rowspan=2, padx=(10, 10), pady=8)
             ctk.CTkLabel(row, text=os.path.basename(p), anchor="w", text_color=T["TEXT"], font=f_name).grid(row=0, column=1, sticky="ew", pady=(8, 0))
             meta = f"{kind}  ·  {st.st_size / 1024:.0f} КБ  ·  {datetime.datetime.fromtimestamp(st.st_mtime):%d.%m.%Y %H:%M}"
             ctk.CTkLabel(row, text=meta, anchor="w", text_color=T["MUTED"], font=f_meta).grid(row=1, column=1, sticky="ew", pady=(0, 8))
@@ -1750,6 +1870,10 @@ class App(ctk.CTk):
         self.build()
         self.bind_all("<Control-KeyPress>", self._hotkeys, add="+")
         self.bind("<Configure>", self._on_resize)
+        self.bind("<FocusIn>", lambda e: ANIM.__setitem__("active", True))
+        self.bind("<FocusOut>", lambda e: self.after(300, self._maybe_pause))
+        self.bind("<Unmap>", lambda e: ANIM.__setitem__("active", False))
+        self.bind("<Map>", lambda e: ANIM.__setitem__("active", True))
         self.after(100, self.poll)
         self.after(50, self.dark_titlebar)
         self.after(50, self._hero_tick)
@@ -1805,6 +1929,13 @@ class App(ctk.CTk):
             pass
         return "break"
 
+    def _maybe_pause(self):
+        try:
+            if self.focus_displayof() is None and not (self.worker and self.worker.is_alive()):
+                ANIM["active"] = False
+        except Exception:
+            pass
+
     def _on_resize(self, e):
         if e.widget is not self:
             return
@@ -1843,6 +1974,14 @@ class App(ctk.CTk):
                                       unselected_color=T["FIELD"], unselected_hover_color=T["FIELD_BORDER"],
                                       text_color=T["TEXT"], text_color_disabled=T["MUTED"],
                                       font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"))
+
+    def hint(self, parent, text, **grid):
+        """Подсказка, которая переносится по реальной ширине карточки (никогда не вылезает за край)."""
+        lb = ctk.CTkLabel(parent, text=text, text_color=T["MUTED"], anchor="w", justify="left",
+                          font=ctk.CTkFont(family="Segoe UI", size=11))
+        lb.grid(**grid)
+        parent.bind("<Configure>", lambda e, l=lb: l.configure(wraplength=max(200, e.width - 48)), add="+")
+        return lb
 
     def label(self, parent, text, size=11, bold=True, color=None, **kw):
         return ctk.CTkLabel(parent, text=text, text_color=color or T["MUTED"],
@@ -1925,11 +2064,12 @@ class App(ctk.CTk):
             b.set_plain()
             b.pack(side="left", padx=2, pady=7)
             self.menu_btns[name] = b
-        self.theme_btn = GhostButton(bar, "☀  Светлая" if self.theme == "dark" else "☾  Тёмная", self.toggle_theme, width=112, height=30,
-                                     bg=T["BG"], text_color=T["MUTED"], radius=15, font=("Segoe UI", 11, "bold"))
+        self.theme_btn = GhostButton(bar, "Светлая" if self.theme == "dark" else "Тёмная", self.toggle_theme, width=112, height=30,
+                                     bg=T["BG"], text_color=T["MUTED"], radius=15, font=("Segoe UI", 11, "bold"),
+                                     icon="sun" if self.theme == "dark" else "moon", icon_size=15)
         self.theme_btn.pack(side="right", padx=(0, 24), pady=7)
-        self.files_btn = GhostButton(bar, "▤  Мои файлы", self.show_files, width=122, height=30, bg=T["BG"], text_color=T["MUTED"],
-                                     radius=15, font=("Segoe UI", 11, "bold"))
+        self.files_btn = GhostButton(bar, "Мои файлы", self.show_files, width=126, height=30, bg=T["BG"], text_color=T["MUTED"],
+                                     radius=15, font=("Segoe UI", 11, "bold"), icon="folder", icon_size=15)
         self.files_btn.pack(side="right", padx=(0, 8), pady=7)
 
         self.scroll = ctk.CTkScrollableFrame(self, fg_color=T["BG"], corner_radius=0, scrollbar_button_color=T["FIELD_BORDER"],
@@ -1958,7 +2098,7 @@ class App(ctk.CTk):
         self.url_entry.bind("<FocusOut>", lambda e: self.url_entry.configure(border_color=T["FIELD_BORDER"]))
         self.paste_btn = GhostButton(row, "Вставить", self.paste_url, width=104, height=50, bg=T["CARD"], radius=16)
         self.paste_btn.grid(row=0, column=1, padx=(10, 0))
-        self.go_btn = GradientButton(row, "Получить текст  ✦", self.start, width=200, height=50, bg=T["CARD"])
+        self.go_btn = GradientButton(row, "Получить текст", self.start, width=200, height=50, bg=T["CARD"], icon="play")
         self.go_btn.grid(row=0, column=2, padx=(4, 0))
 
         opts = Flow(card, gap=18, vgap=12)
@@ -1970,9 +2110,9 @@ class App(ctk.CTk):
             self.label(box, label).pack(anchor="w", pady=(0, 6))
             self.seg(box, values, var).pack(anchor="w")
             opts.add(box)
-        self.label(card, "small — быстро · medium — баланс · large-v3 — максимум качества (нужна NVIDIA)   ·   "
-                         "«Точно» медленнее в 2–3 раза   ·   Спикеры — кто говорит в подкасте",
-                   bold=False, wraplength=900, justify="left").grid(row=3, column=0, sticky="w", padx=22, pady=(0, 18))
+        self.hint(card, "small — быстро · medium — баланс · large-v3 — максимум качества (нужна NVIDIA)   ·   "
+                        "«Точно» медленнее в 2–3 раза   ·   Спикеры — кто говорит в подкасте",
+                  row=3, column=0, sticky="ew", padx=22, pady=(0, 18))
 
         prog = self.card(root)
         prog.grid(row=2, column=0, sticky="ew", padx=20, pady=6)
@@ -2027,10 +2167,11 @@ class App(ctk.CTk):
         self.ai_copy_btn = aiflow.add(GhostButton(aiflow, "Скопировать промпт + текст", lambda: self.copy_ai_prompt(), width=230, height=38, bg=T["CARD"]))
         self.ai_open_btn = aiflow.add(GhostButton(aiflow, "Открыть Claude", lambda: webbrowser.open("https://claude.ai/new"), width=140, height=38, bg=T["CARD"]))
         self.ai_result_btn = aiflow.add(GhostButton(aiflow, "Открыть результат", self.open_ai_file, width=160, height=38, bg=T["CARD"]))
-        self.ai_key_btn = aiflow.add(GhostButton(aiflow, "⚙", self.ask_api_key, width=38, height=38, bg=T["CARD"], text_color=T["MUTED"], radius=19))
-        self.label(ai, "Результат — интерактивная страница в стиле Whispy: карточки, таблица, схема, слайды со стрелками или инфографика. "
-                       "Нужен API-ключ (⚙, вводится один раз). Без ключа — скопируй промпт и вставь в Claude.",
-                   bold=False, wraplength=900, justify="left").grid(row=2, column=0, sticky="w", padx=22, pady=(0, 16))
+        self.ai_key_btn = aiflow.add(GhostButton(aiflow, "", self.ask_api_key, width=38, height=38, bg=T["CARD"], text_color=T["MUTED"], radius=19,
+                                                 icon="gear", icon_size=17))
+        self.hint(ai, "Результат — интерактивная страница в стиле Whispy: карточки, таблица, схема, слайды со стрелками или инфографика. "
+                      "Нужен API-ключ (кнопка с шестерёнкой, вводится один раз). Без ключа — скопируй промпт и вставь в Claude.",
+                  row=2, column=0, sticky="ew", padx=22, pady=(0, 16))
 
         bottom = Flow(root, gap=10, vgap=8)
         bottom.grid(row=5, column=0, sticky="ew", padx=20, pady=(6, 18))
@@ -2116,6 +2257,9 @@ class App(ctk.CTk):
     def _hero_tick(self):
         if not self.winfo_exists():
             return
+        if not ANIM["active"]:
+            self.after(200, self._hero_tick)
+            return
         busy = self.worker is not None and self.worker.is_alive()
         self._hero_phase += 0.28 if busy else 0.06
         h = 140
@@ -2154,7 +2298,7 @@ class App(ctk.CTk):
         self.ai_result_btn.configure(state="normal" if self.last_ai_path else "disabled")
         self.ai_api_btn.configure(state="normal" if (has and not busy and not ai_busy) else "disabled",
                                   text="Работаю…" if ai_busy else "Сделать через API")
-        self.go_btn.configure(state="disabled" if busy else "normal", text="Работаю…" if busy else "Получить текст  ✦")
+        self.go_btn.configure(state="disabled" if busy else "normal", text="Работаю…" if busy else "Получить текст")
 
     # ---- текст ----
     def render_lines(self):

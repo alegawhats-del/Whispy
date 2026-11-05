@@ -101,4 +101,10 @@ jobs:
           python bump_manifest.py ${{ steps.ver.outputs.ver }}
           git add version.json
           git commit -m "version.json -> ${{ steps.ver.outputs.ver }} [skip ci]"
-          git push origin main
+          $ok = $false
+          for ($i = 0; $i -lt 5 -and -not $ok; $i++) {
+            git pull --rebase origin main
+            git push origin main
+            if ($LASTEXITCODE -eq 0) { $ok = $true } else { Start-Sleep -Seconds 10 }
+          }
+          if (-not $ok) { exit 1 }
