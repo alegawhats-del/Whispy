@@ -1507,7 +1507,7 @@ class AIPanel(Panel):
     """Настройки ИИ: провайдер, модель, ключ, адрес сервера."""
 
     def __init__(self, master):
-        super().__init__(master, 600, 470)
+        super().__init__(master, 600, 545)
         self.header("sparkle", T["VIOLET"], T["PINK_SOFT"], "Настроить ИИ")
         cfg = master.ai_cfg
         f_lab = ctk.CTkFont(family=UI_FONT, size=11, weight="bold")
