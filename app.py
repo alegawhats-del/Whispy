@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.5.0"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -146,6 +146,20 @@ DEVICES = {"Авто": "auto", "NVIDIA": "gpu", "CPU": "cpu"}
 SPEED = {"Быстро": 1, "Точно": 5}
 SPEAKERS = {"Выкл": -1, "Авто": 0, "2": 2, "3": 3, "4": 4}
 AI_TYPES = ["Тезисы", "Таблица", "Блок-схема", "Презентация", "Инфографика"]
+# Провайдеры ИИ: (протокол, адрес, модель по умолчанию, нужен ли ключ, ссылка где взять ключ)
+AI_PROVIDERS = {
+    "Anthropic (Claude)": ("anthropic", "https://api.anthropic.com/v1/messages", "claude-sonnet-5-5", True, "https://console.anthropic.com"),
+    "OpenAI (GPT)": ("openai", "https://api.openai.com/v1/chat/completions", "gpt-5", True, "https://platform.openai.com/api-keys"),
+    "Google Gemini": ("openai", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "gemini-2.5-flash", True, "https://aistudio.google.com/apikey"),
+    "DeepSeek": ("openai", "https://api.deepseek.com/chat/completions", "deepseek-chat", True, "https://platform.deepseek.com"),
+    "Mistral": ("openai", "https://api.mistral.ai/v1/chat/completions", "mistral-large-latest", True, "https://console.mistral.ai"),
+    "Groq (быстро, бесплатно)": ("openai", "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile", True, "https://console.groq.com/keys"),
+    "xAI (Grok)": ("openai", "https://api.x.ai/v1/chat/completions", "grok-4", True, "https://console.x.ai"),
+    "OpenRouter (любая модель)": ("openai", "https://openrouter.ai/api/v1/chat/completions", "anthropic/claude-sonnet-4.5", True, "https://openrouter.ai/keys"),
+    "Ollama (локально)": ("openai", "http://localhost:11434/v1/chat/completions", "llama3.1", False, "https://ollama.com"),
+    "Свой сервер (OpenAI API)": ("openai", "http://localhost:8000/v1/chat/completions", "default", False, ""),
+}
+DEFAULT_PROVIDER = "Anthropic (Claude)"
 MODEL_SIZE_GB = {"small": 0.6, "medium": 1.8, "large-v3": 3.3}
 SPK_MODEL_URL = ("https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/"
                  "3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx")
@@ -1489,6 +1503,92 @@ class FilesPanel(Panel):
             self.app.toast("Не удалось прочитать файл: " + str(e)[:60])
 
 
+class AIPanel(Panel):
+    """Настройки ИИ: провайдер, модель, ключ, адрес сервера."""
+
+    def __init__(self, master):
+        super().__init__(master, 600, 470)
+        self.header("sparkle", T["VIOLET"], T["PINK_SOFT"], "Настроить ИИ")
+        cfg = master.ai_cfg
+        f_lab = ctk.CTkFont(family=UI_FONT, size=11, weight="bold")
+        f_in = ctk.CTkFont(family=UI_FONT, size=13)
+        box = ctk.CTkFrame(self.body, fg_color="transparent")
+        box.pack(fill="both", expand=True, padx=28, pady=(6, 0))
+        box.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(box, text="ПРОВАЙДЕР", text_color=T["MUTED"], font=f_lab, anchor="w").grid(row=0, column=0, sticky="w")
+        self.prov = tk.StringVar(value=cfg.get("provider", DEFAULT_PROVIDER))
+        ctk.CTkOptionMenu(box, variable=self.prov, values=list(AI_PROVIDERS.keys()), height=38, corner_radius=12, font=f_in,
+                          fg_color=T["FIELD"], button_color=T["VIOLET"], button_hover_color=T["PINK"], text_color=T["TEXT"],
+                          dropdown_fg_color=T["CARD"], dropdown_text_color=T["TEXT"], dropdown_hover_color=T["PINK_SOFT"],
+                          dropdown_font=f_in, command=self._on_provider).grid(row=1, column=0, sticky="ew", pady=(4, 12))
+
+        ctk.CTkLabel(box, text="МОДЕЛЬ", text_color=T["MUTED"], font=f_lab, anchor="w").grid(row=2, column=0, sticky="w")
+        self.model = tk.StringVar(value=cfg.get("model", ""))
+        self._entry(box, self.model, f_in).grid(row=3, column=0, sticky="ew", pady=(4, 12))
+
+        self.key_lbl = ctk.CTkLabel(box, text="API-КЛЮЧ", text_color=T["MUTED"], font=f_lab, anchor="w")
+        self.key_lbl.grid(row=4, column=0, sticky="w")
+        self.key = tk.StringVar(value=cfg.get("keys", {}).get(self.prov.get(), ""))
+        self.key_entry = self._entry(box, self.key, f_in, secret=True)
+        self.key_entry.grid(row=5, column=0, sticky="ew", pady=(4, 12))
+
+        ctk.CTkLabel(box, text="АДРЕС СЕРВЕРА (можно не менять)", text_color=T["MUTED"], font=f_lab, anchor="w").grid(row=6, column=0, sticky="w")
+        self.base = tk.StringVar(value=cfg.get("base", ""))
+        self._entry(box, self.base, f_in).grid(row=7, column=0, sticky="ew", pady=(4, 8))
+
+        self.hint = ctk.CTkLabel(box, text="", text_color=T["MUTED"], font=ctk.CTkFont(family=UI_FONT, size=11), anchor="w", justify="left", wraplength=520)
+        self.hint.grid(row=8, column=0, sticky="w")
+
+        btns = ctk.CTkFrame(self.body, fg_color="transparent")
+        btns.pack(fill="x", padx=18, pady=(6, 8), side="bottom")
+        GradientButton(btns, "Сохранить", self._save, width=140, height=40, bg=T["CARD"], font=(UI_FONT, 12, "bold")).pack(side="right")
+        GhostButton(btns, "Отмена", lambda: self.close(None), width=110, height=40, bg=T["CARD"]).pack(side="right", padx=(0, 6))
+        self.keysite_btn = GhostButton(btns, "Где взять ключ", self._open_site, width=150, height=40, bg=T["CARD"], icon="key", icon_size=15)
+        self.keysite_btn.pack(side="left")
+        self._on_provider(self.prov.get(), keep=True)
+        self.bind("<Return>", lambda e: self._save())
+
+    def _entry(self, parent, var, font, secret=False):
+        e = ctk.CTkEntry(parent, textvariable=var, height=40, corner_radius=12, show="•" if secret else "", fg_color=T["FIELD"],
+                         border_color=T["FIELD_BORDER"], border_width=1, text_color=T["TEXT"], font=font)
+        e.bind("<FocusIn>", lambda ev, w=e: w.configure(border_color=T["PINK"]))
+        e.bind("<FocusOut>", lambda ev, w=e: w.configure(border_color=T["FIELD_BORDER"]))
+        return e
+
+    def _on_provider(self, name, keep=False):
+        proto, base, model, need_key, site = AI_PROVIDERS[name]
+        if not keep or not self.model.get():
+            self.model.set(model)
+        if not keep or not self.base.get():
+            self.base.set(base)
+        self.key.set(self.app.ai_cfg.get("keys", {}).get(name, ""))
+        self.key_entry.configure(state="normal" if need_key else "disabled")
+        self.key_lbl.configure(text="API-КЛЮЧ" if need_key else "API-КЛЮЧ — не нужен")
+        self.keysite_btn.configure(state="normal" if site else "disabled")
+        tips = {
+            "Ollama (локально)": "Бесплатно и офлайн: поставь Ollama, выполни «ollama pull llama3.1» (или любую модель) — и всё работает без ключа.",
+            "OpenRouter (любая модель)": "Один ключ — сотни моделей. В поле «Модель» укажи любую с openrouter.ai/models, например openai/gpt-5 или google/gemini-2.5-pro.",
+            "Groq (быстро, бесплатно)": "Бесплатный тариф с лимитами, очень быстрые ответы. Модели: llama-3.3-70b-versatile, qwen-qwq-32b.",
+            "Свой сервер (OpenAI API)": "Любой сервер с OpenAI-совместимым API (LM Studio, vLLM, LocalAI): укажи адрес …/v1/chat/completions.",
+        }
+        self.hint.configure(text=tips.get(name, "Ключ хранится только на этом компьютере. Для каждого провайдера — свой ключ."))
+
+    def _open_site(self):
+        site = AI_PROVIDERS[self.prov.get()][4]
+        if site:
+            webbrowser.open(site)
+
+    def _save(self):
+        cfg = self.app.ai_cfg
+        name = self.prov.get()
+        cfg["provider"] = name
+        cfg["model"] = self.model.get().strip()
+        cfg["base"] = self.base.get().strip()
+        cfg.setdefault("keys", {})[name] = self.key.get().strip()
+        self.close(True)
+
+
 # ---------- фоновые задачи ----------
 class Cancelled(Exception):
     pass
@@ -1872,25 +1972,51 @@ class Worker(threading.Thread):
 
 
 class AIWorker(threading.Thread):
-    MODEL = "claude-sonnet-5-5"
+    """Запрос к выбранному провайдеру: протокол Anthropic или OpenAI-совместимый (OpenAI, Gemini, DeepSeek, Mistral, Groq, xAI, OpenRouter, Ollama…)."""
 
-    def __init__(self, api_key, kind, transcript, title, url, q):
+    def __init__(self, cfg, kind, transcript, title, url, q):
         super().__init__(daemon=True)
-        self.api_key, self.kind, self.transcript, self.title, self.url, self.q = api_key, kind, transcript, title, url, q
+        self.cfg, self.kind, self.transcript, self.title, self.url, self.q = cfg, kind, transcript, title, url, q
 
     def run(self):
         try:
-            self.q.put(("ai_status", {"text": f"Claude делает «{self.kind}»… обычно 30–90 секунд"}))
-            body = json.dumps({"model": self.MODEL, "max_tokens": 12000,
-                               "messages": [{"role": "user", "content":
-                                             f"{AI_PROMPTS[self.kind]}\n\nНазвание видео: {self.title}\n\nТРАНСКРИПТ:\n{self.transcript}"}]}).encode("utf-8")
-            req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, method="POST",
-                                         headers={"x-api-key": self.api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
-            with urllib.request.urlopen(req, timeout=600) as resp:
+            name = self.cfg.get("provider", DEFAULT_PROVIDER)
+            proto, base, _, need_key, _ = AI_PROVIDERS.get(name, AI_PROVIDERS[DEFAULT_PROVIDER])
+            url = self.cfg.get("base") or base
+            model = self.cfg.get("model") or AI_PROVIDERS.get(name, AI_PROVIDERS[DEFAULT_PROVIDER])[2]
+            key = self.cfg.get("key", "")
+            if need_key and not key:
+                raise RuntimeError(f"Для «{name}» нужен API-ключ — ИИ → Настроить ИИ.")
+            self.q.put(("ai_status", {"text": f"{name.split(' (')[0]} · {model} делает «{self.kind}»… обычно 30–90 секунд"}))
+            prompt = f"{AI_PROMPTS[self.kind]}\n\nНазвание видео: {self.title}\n\nТРАНСКРИПТ:\n{self.transcript}"
+            headers = {"content-type": "application/json", "User-Agent": f"Whispy/{APP_VERSION}"}
+            if proto == "anthropic":
+                body = {"model": model, "max_tokens": 12000, "messages": [{"role": "user", "content": prompt}]}
+                headers.update({"x-api-key": key, "anthropic-version": "2023-06-01"})
+            else:
+                body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+                if "api.openai.com" in url:
+                    body["max_completion_tokens"] = 12000
+                else:
+                    body["max_tokens"] = 12000
+                if key:
+                    headers["Authorization"] = f"Bearer {key}"
+                if "openrouter.ai" in url:
+                    headers["HTTP-Referer"] = GITHUB_URL
+                    headers["X-Title"] = "Whispy"
+            req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), method="POST", headers=headers)
+            with urllib.request.urlopen(req, timeout=900) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-            text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
+            if proto == "anthropic":
+                text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
+            else:
+                choices = data.get("choices") or []
+                msg = (choices[0].get("message") or {}) if choices else {}
+                text = msg.get("content") or ""
+                if isinstance(text, list):
+                    text = "".join(part.get("text", "") for part in text if isinstance(part, dict))
             if not text.strip():
-                raise RuntimeError("Пустой ответ от API.")
+                raise RuntimeError("Пустой ответ от ИИ.")
             html = wrap_ai_html(self.kind, text, self.title, self.url)
             stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
             path = os.path.join(OUT_DIR, f"{safe_name(self.title)}_{self.kind}_{stamp}.html")
@@ -1899,10 +2025,11 @@ class AIWorker(threading.Thread):
             self.q.put(("ai_done", {"path": path}))
         except urllib.error.HTTPError as e:
             try:
-                msg = json.loads(e.read().decode("utf-8")).get("error", {}).get("message", str(e))
+                err = json.loads(e.read().decode("utf-8"))
+                msg = (err.get("error") or {}).get("message") if isinstance(err.get("error"), dict) else err.get("error") or err.get("message") or str(e)
             except Exception:
                 msg = str(e)
-            self.q.put(("ai_error", {"text": f"API: {msg}"}))
+            self.q.put(("ai_error", {"text": f"Ответ сервера ИИ ({e.code}): {msg}"}))
         except Exception as e:  # noqa: BLE001
             self.q.put(("ai_error", {"text": human_error(e)}))
 
@@ -2074,7 +2201,9 @@ class App(ctk.CTk):
         self.ai_var = tk.StringVar(value=self.settings.get("ai_type", "Тезисы"))
         for v in (self.lang_var, self.model_var, self.device_var, self.speed_var, self.spk_var, self.ai_var):
             v.trace_add("write", lambda *a: self.persist())
-        self.api_key = self.settings.get("api_key", "")
+        self.ai_cfg = self.settings.get("ai", {}) or {}
+        if self.settings.get("api_key") and not self.ai_cfg.get("keys"):
+            self.ai_cfg = {"provider": DEFAULT_PROVIDER, "model": "", "base": "", "keys": {DEFAULT_PROVIDER: self.settings["api_key"]}}
 
         self.build()
         self.bind_all("<Control-KeyPress>", self._hotkeys, add="+")
@@ -2147,7 +2276,8 @@ class App(ctk.CTk):
     def persist(self):
         self.settings.update({"theme": self.theme, "lang": self.lang_var.get(), "model": self.model_var.get(),
                               "device": self.device_var.get(), "speed": self.speed_var.get(), "speakers": self.spk_var.get(),
-                              "ai_type": self.ai_var.get(), "api_key": self.api_key})
+                              "ai_type": self.ai_var.get(), "ai": self.ai_cfg})
+        self.settings.pop("api_key", None)
         try:
             self.settings["geometry"] = self.geometry()
         except Exception:
@@ -2213,7 +2343,7 @@ class App(ctk.CTk):
             "ИИ": [(f"{k}  →  скопировать промпт + текст", (lambda k=k: self.copy_ai_prompt(k))) for k in AI_TYPES] + [
                 None,
                 ("Открыть Claude в браузере", lambda: webbrowser.open("https://claude.ai/new")),
-                ("API-ключ…", self.ask_api_key),
+                ("Настроить ИИ (провайдер, модель, ключ)…", self.ask_api_key),
             ],
             "Помощь": [
                 ("Руководство с картинками", self.show_guide),
@@ -2366,10 +2496,10 @@ class App(ctk.CTk):
         self.ai_copy_btn = aiflow.add(GhostButton(aiflow, "Скопировать промпт + текст", lambda: self.copy_ai_prompt(), width=230, height=38, bg=T["CARD"]))
         self.ai_open_btn = aiflow.add(GhostButton(aiflow, "Открыть Claude", lambda: webbrowser.open("https://claude.ai/new"), width=140, height=38, bg=T["CARD"]))
         self.ai_result_btn = aiflow.add(GhostButton(aiflow, "Открыть результат", self.open_ai_file, width=160, height=38, bg=T["CARD"]))
-        self.ai_key_btn = aiflow.add(GhostButton(aiflow, "API-ключ", self.ask_api_key, width=118, height=38, bg=T["CARD"],
-                                                 text_color=T["MUTED"], icon="key", icon_size=16))
+        self.ai_key_btn = aiflow.add(GhostButton(aiflow, "Настроить ИИ", self.ask_api_key, width=130, height=38, bg=T["CARD"],
+                                                 text_color=T["MUTED"], icon="gear", icon_size=16))
         self.hint(ai, "Результат — интерактивная страница в стиле Whispy: карточки, таблица, схема, слайды со стрелками или инфографика. "
-                      "Нужен API-ключ (кнопка «API-ключ», вводится один раз). Без ключа — скопируй промпт и вставь в Claude.",
+                      "Работает с любым ИИ: Claude, GPT, Gemini, DeepSeek, Mistral, Groq, Grok, OpenRouter, Ollama (локально) — кнопка «Настроить ИИ». Без ключа — скопируй промпт и вставь в чат.",
                   row=2, column=0, sticky="ew", padx=22, pady=(0, 16))
 
         bottom = Flow(out, gap=10, vgap=8)
@@ -2662,30 +2792,32 @@ class App(ctk.CTk):
         self.clipboard_append(self.ai_payload(kind))
         self.toast(f"Промпт «{kind}» + текст скопированы — вставь в Claude  ✓")
 
+    def ai_ready(self):
+        name = self.ai_cfg.get("provider", DEFAULT_PROVIDER)
+        need_key = AI_PROVIDERS.get(name, AI_PROVIDERS[DEFAULT_PROVIDER])[3]
+        return (not need_key) or bool(self.ai_cfg.get("keys", {}).get(name))
+
     def ask_api_key(self):
-        val = Dialog.show_modal(self, "API-ключ Anthropic",
-                                "Вставь ключ вида sk-ant-… (его даёт владелец программы или console.anthropic.com). "
-                                "Пустая строка — удалить ключ. Ключ хранится только на этом компьютере.", "input", secret=True, default=self.api_key, ok="Сохранить")
-        if val is None:
-            return
-        self.api_key = val.strip()
-        self.persist()
-        self.toast("Ключ сохранён  ✓" if val.strip() else "Ключ удалён")
+        p = AIPanel(self).show()
+        self.wait_window(p)
+        if p.result:
+            self.persist()
+            self.toast(f"ИИ: {self.ai_cfg.get('provider')} · {self.ai_cfg.get('model')}  ✓")
         self.refresh_buttons()
 
     def run_ai_api(self):
         if not self.all_lines or (self.ai_worker and self.ai_worker.is_alive()):
             return
-        if not self.api_key:
+        if not self.ai_ready():
             self.ask_api_key()
-            if not self.api_key:
+            if not self.ai_ready():
                 return
         self.persist()
         self.chip.set("ИИ", "work")
         self.wave.start()
         self.bar.set_indeterminate(True)
         self.pct_lbl.configure(text="…")
-        self.ai_worker = AIWorker(self.api_key, self.ai_var.get(), self.text_for_copy(), self.last_title or self.meta_title or "video",
+        self.ai_worker = AIWorker(self.ai_cfg, self.ai_var.get(), self.text_for_copy(), self.last_title or self.meta_title or "video",
                                   self.last_url, self.q)
         self.ai_worker.start()
         self.refresh_buttons()
@@ -2780,7 +2912,7 @@ class App(ctk.CTk):
                   "2. Нажми «Получить текст». Сначала ищутся субтитры, если их нет — распознаёт whisper.\n"
                   "3. «Спикеры» — программа определит, кто говорит (для подкастов и интервью).\n"
                   "4. Файл с таймкодами сохраняется автоматически. Все файлы — кнопка «Мои файлы» сверху.\n"
-                  "5. «ИИ-ассистент»: выбери формат → «Сделать через API» (или скопируй промпт в Claude). "
+                  "5. «ИИ-ассистент»: выбери формат → «Сделать через API» (провайдер и ключ — «Настроить ИИ»; или скопируй промпт в чат). "
                   "Получишь интерактивную страницу: карточки, таблицу, схему, слайды или инфографику.\n\n"
                   "Модели: small — быстро, medium — баланс, large-v3 — максимум (нужна NVIDIA). "
                   "Подробное руководство с картинками — в меню Помощь.")
