@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.6.1"
+APP_VERSION = "2.7.0"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -166,6 +166,55 @@ AI_PROVIDERS = {
     "Свой сервер (OpenAI API)": ("openai", "http://localhost:8000/v1/chat/completions", "default", False, ""),
 }
 DEFAULT_PROVIDER = "Pollinations (бесплатно, без ключа)"
+# Профиль провайдера: (качество 1–5, для каких задач лучше всего, примерный бесплатный лимит в день (0 = без лимита / платно), подпись лимита)
+AI_PROFILE = {
+    "Pollinations (бесплатно, без ключа)": (3, "Тезисы, Таблица, Блок-схема", 0, "1 запрос / 45 с"),
+    "Google Gemini": (5, "Презентация, Инфографика, Тезисы — лучший бесплатный", 250, "~250 в день"),
+    "NVIDIA NIM (бесплатно)": (4, "Тезисы, Таблица, Блок-схема; с deepseek-ai/deepseek-v3.1 — и презентации", 0, "40 в минуту, без дневного"),
+    "Ollama Cloud (бесплатно)": (4, "Презентация, Инфографика (gpt-oss:120b)", 0, "дневной лимит по токенам"),
+    "Z.AI GLM (бесплатно)": (3, "Тезисы, Таблица — быстро и без лимита", 0, "без лимита"),
+    "Groq (быстро, бесплатно)": (3, "Тезисы, Таблица — самый быстрый; слайды попроще", 1000, "~1000 в день"),
+    "Cerebras (бесплатно, быстро)": (4, "Тезисы, Блок-схема, Презентация", 0, "~1 млн токенов в день"),
+    "GitHub Models (бесплатно)": (4, "Презентация, Инфографика (gpt-4o)", 50, "~50 в день"),
+    "Mistral": (4, "Тезисы, Таблица, Презентация", 0, "1 запрос / с"),
+    "OpenRouter (любая модель)": (4, "Зависит от модели; :free-модели — 50 в день", 50, "~50 в день (free)"),
+    "Anthropic (Claude)": (5, "Всё — самые аккуратные схемы и слайды", 0, "платно, ~1–3 ¢ за задачу"),
+    "OpenAI (GPT)": (5, "Всё — очень близко к Claude", 0, "платно"),
+    "DeepSeek": (5, "Всё — лучшая цена/качество", 0, "платно, копейки"),
+    "xAI (Grok)": (4, "Тезисы, Презентация", 0, "платно"),
+    "Ollama (локально)": (3, "Зависит от модели и видеокарты", 0, "без лимита, офлайн"),
+    "Свой сервер (OpenAI API)": (3, "Зависит от модели", 0, ""),
+}
+# Порядок автовыбора, когда ключ встроен в сборку (лучший — первым)
+BUILTIN_ORDER = ["Google Gemini", "NVIDIA NIM (бесплатно)", "Ollama Cloud (бесплатно)", "Cerebras (бесплатно, быстро)",
+                 "GitHub Models (бесплатно)", "Z.AI GLM (бесплатно)", "Groq (быстро, бесплатно)", "Mistral", "OpenRouter (любая модель)"]
+
+
+def best_builtin_provider(exclude=()):
+    for name in BUILTIN_ORDER:
+        if BUILTIN_KEYS.get(name) and name not in exclude:
+            return name
+    return None
+
+
+def today_str():
+    return datetime.date.today().isoformat()
+
+
+def usage_bump(cfg, name):
+    """Счётчик запросов: сегодня и всего по провайдеру (хранится в настройках)."""
+    u = cfg.setdefault("usage", {}).setdefault(name, {"date": today_str(), "today": 0, "total": 0})
+    if u.get("date") != today_str():
+        u["date"], u["today"] = today_str(), 0
+    u["today"] += 1
+    u["total"] += 1
+
+
+def usage_text(cfg, name):
+    u = (cfg.get("usage") or {}).get(name) or {}
+    today = u.get("today", 0) if u.get("date") == today_str() else 0
+    limit = AI_PROFILE.get(name, (0, "", 0, ""))[2]
+    return f"Запросов сегодня: {today}" + (f" из ~{limit}" if limit else "") + f"  ·  всего: {u.get('total', 0)}"
 # Встроенные ключи бесплатных тарифов: подставляются при сборке из секрета GitHub FREE_KEYS (inject_keys.py), в репозитории пусто.
 BUILTIN_KEYS = {}
 
@@ -1539,7 +1588,7 @@ class AIPanel(Panel):
     }
 
     def __init__(self, master):
-        super().__init__(master, 600, 560)
+        super().__init__(master, 620, 620)
         self.header("sparkle", T["VIOLET"], T["PINK_SOFT"], "Настроить ИИ")
         cfg = master.ai_cfg
         f_lab = ctk.CTkFont(family=UI_FONT, size=11, weight="bold")
@@ -1610,7 +1659,9 @@ class AIPanel(Panel):
         else:
             self.base_lbl.grid_remove()
             self.base_entry.grid_remove()
-        self.hint.configure(text=self.KEY_STEPS.get(name, "") + "\n\nКлюч хранится только на этом компьютере.")
+        q, best, _, lim = AI_PROFILE.get(name, (3, "", 0, ""))
+        prof = f"{'★' * q}{'☆' * (5 - q)}  Лучше всего: {best}." + (f"  Лимит: {lim}." if lim else "") + f"\n{usage_text(self.app.ai_cfg, name)}"
+        self.hint.configure(text=prof + "\n\n" + self.KEY_STEPS.get(name, "") + "\n\nКлюч хранится только на этом компьютере.")
 
     def _open_site(self):
         site = AI_PROVIDERS[self.prov.get()][4]
@@ -2057,6 +2108,8 @@ class AIWorker(threading.Thread):
             key = resolve_key(self.cfg, name)
             if need_key and not key:
                 raise RuntimeError(f"Для «{name}» нужен API-ключ — ИИ → Настроить ИИ.")
+            usage_bump(self.cfg, name)
+            self.q.put(("ai_usage", {}))
             self.q.put(("ai_status", {"text": f"{name.split(' (')[0]} · {model} делает «{self.kind}»… обычно 30–90 секунд"}))
             prompt = f"{AI_PROMPTS[self.kind]}\n\nНазвание видео: {self.title}\n\nТРАНСКРИПТ:\n{self.transcript}"
             headers = {"content-type": "application/json", "User-Agent": f"Whispy/{APP_VERSION}"}
@@ -2102,6 +2155,12 @@ class AIWorker(threading.Thread):
                 msg = (err.get("error") or {}).get("message") if isinstance(err.get("error"), dict) else err.get("error") or err.get("message") or str(e)
             except Exception:
                 msg = str(e)
+            # лимит/ключ исчерпан — пробуем следующий встроенный бесплатный провайдер
+            tried = set(self.cfg.get("_tried", [])) | {self.cfg.get("provider", DEFAULT_PROVIDER)}
+            nxt = best_builtin_provider(exclude=tried) if e.code in (401, 402, 403, 429, 503) else None
+            if nxt:
+                self.q.put(("ai_fallback", {"from": self.cfg.get("provider"), "to": nxt, "tried": sorted(tried), "code": e.code}))
+                return
             self.q.put(("ai_error", {"text": f"Ответ сервера ИИ ({e.code}): {msg}"}))
         except Exception as e:  # noqa: BLE001
             self.q.put(("ai_error", {"text": human_error(e)}))
@@ -2276,7 +2335,9 @@ class App(ctk.CTk):
             v.trace_add("write", lambda *a: self.persist())
         self.ai_cfg = self.settings.get("ai", {}) or {}
         if self.settings.get("api_key") and not self.ai_cfg.get("keys"):
-            self.ai_cfg = {"provider": DEFAULT_PROVIDER, "model": "", "base": "", "keys": {DEFAULT_PROVIDER: self.settings["api_key"]}}
+            self.ai_cfg = {"provider": "Anthropic (Claude)", "model": "", "base": "", "keys": {"Anthropic (Claude)": self.settings["api_key"]}}
+        if not self.ai_cfg.get("provider") and best_builtin_provider():
+            self.ai_cfg["provider"] = best_builtin_provider()
 
         self.build()
         self.bind_all("<Control-KeyPress>", self._hotkeys, add="+")
@@ -2571,9 +2632,8 @@ class App(ctk.CTk):
         self.ai_result_btn = aiflow.add(GhostButton(aiflow, "Открыть результат", self.open_ai_file, width=160, height=38, bg=T["CARD"]))
         self.ai_key_btn = aiflow.add(GhostButton(aiflow, "Настроить ИИ", self.ask_api_key, width=130, height=38, bg=T["CARD"],
                                                  text_color=T["MUTED"], icon="gear", icon_size=16))
-        self.hint(ai, "Результат — интерактивная страница в стиле Whispy: карточки, таблица, схема, слайды со стрелками или инфографика. "
-                      "Работает с любым ИИ: Claude, GPT, Gemini, DeepSeek, Mistral, Groq, Grok, OpenRouter, Ollama (локально) — кнопка «Настроить ИИ». Без ключа — скопируй промпт и вставь в чат.",
-                  row=2, column=0, sticky="ew", padx=22, pady=(0, 16))
+        self.ai_hint_lbl = self.hint(ai, "", row=2, column=0, sticky="ew", padx=22, pady=(0, 16))
+        self.refresh_ai_hint()
 
         bottom = Flow(out, gap=10, vgap=8)
         bottom.grid(row=2, column=0, sticky="ew", padx=22, pady=(0, 8))
@@ -2876,15 +2936,24 @@ class App(ctk.CTk):
         if p.result:
             self.persist()
             self.toast(f"ИИ: {self.ai_cfg.get('provider')} · {self.ai_cfg.get('model')}  ✓")
+        self.refresh_ai_hint()
         self.refresh_buttons()
 
-    def run_ai_api(self):
+    def refresh_ai_hint(self):
+        name = self.ai_cfg.get("provider", DEFAULT_PROVIDER)
+        q, best, _, lim = AI_PROFILE.get(name, (3, "", 0, ""))
+        model = self.ai_cfg.get("model") or AI_PROVIDERS.get(name, AI_PROVIDERS[DEFAULT_PROVIDER])[2]
+        self.ai_hint_lbl.configure(text=f"Сейчас: {name} · {model} · {'★' * q}{'☆' * (5 - q)}  —  лучше всего: {best}.  {usage_text(self.ai_cfg, name)}"
+                                        + (f"  ·  лимит: {lim}" if lim else "") + "\nРезультат — интерактивная страница: карточки, таблица, схема, слайды или инфографика. Сменить ИИ — «Настроить ИИ».")
+
+    def run_ai_api(self, tried=None):
         if not self.all_lines or (self.ai_worker and self.ai_worker.is_alive()):
             return
         if not self.ai_ready():
             self.ask_api_key()
             if not self.ai_ready():
                 return
+        self.ai_cfg["_tried"] = tried or []
         self.persist()
         self.chip.set("ИИ", "work")
         self.wave.start()
@@ -3074,6 +3143,14 @@ class App(ctk.CTk):
                         open_html(d["path"], "Whispy — " + os.path.basename(d["path"]))
                     except Exception:
                         pass
+                elif kind == "ai_usage":
+                    self.persist()
+                    self.refresh_ai_hint()
+                elif kind == "ai_fallback":
+                    self.ai_cfg["provider"], self.ai_cfg["model"], self.ai_cfg["base"] = d["to"], "", ""
+                    self.status_lbl.configure(text=f"{d['from']}: лимит/ошибка {d['code']} → переключаюсь на {d['to']}", text_color=T["TEXT"])
+                    self.toast(f"Переключил ИИ на {d['to'].split(' (')[0]}")
+                    self.after(400, lambda: self.run_ai_api(tried=d["tried"]))
                 elif kind == "ai_error":
                     self.wave.stop()
                     self.bar.set_indeterminate(False)
