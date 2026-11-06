@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.7.3"
+APP_VERSION = "2.8.0"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -164,6 +164,25 @@ AI_PROVIDERS = {
     "OpenRouter (любая модель)": ("openai", "https://openrouter.ai/api/v1/chat/completions", "anthropic/claude-sonnet-4.5", True, "https://openrouter.ai/keys"),
     "Ollama (локально)": ("openai", "http://localhost:11434/v1/chat/completions", "llama3.1", False, "https://ollama.com"),
     "Свой сервер (OpenAI API)": ("openai", "http://localhost:8000/v1/chat/completions", "default", False, ""),
+}
+# Веб-чат провайдера — для варианта «скопировать промпт и вставить в чат»
+AI_CHAT = {
+    "Pollinations (бесплатно, без ключа)": ("Pollinations", "https://pollinations.ai"),
+    "Anthropic (Claude)": ("Claude", "https://claude.ai/new"),
+    "OpenAI (GPT)": ("ChatGPT", "https://chatgpt.com"),
+    "Google Gemini": ("Gemini", "https://gemini.google.com/app"),
+    "DeepSeek": ("DeepSeek", "https://chat.deepseek.com"),
+    "Mistral": ("Le Chat", "https://chat.mistral.ai"),
+    "Groq (быстро, бесплатно)": ("Groq", "https://chat.groq.com"),
+    "NVIDIA NIM (бесплатно)": ("NVIDIA", "https://build.nvidia.com"),
+    "Ollama Cloud (бесплатно)": ("Ollama", "https://ollama.com"),
+    "Z.AI GLM (бесплатно)": ("Z.AI", "https://chat.z.ai"),
+    "Cerebras (бесплатно, быстро)": ("Cerebras", "https://inference.cerebras.ai"),
+    "GitHub Models (бесплатно)": ("GitHub", "https://github.com/marketplace/models"),
+    "xAI (Grok)": ("Grok", "https://grok.com"),
+    "OpenRouter (любая модель)": ("OpenRouter", "https://openrouter.ai/chat"),
+    "Ollama (локально)": ("Ollama", "https://ollama.com"),
+    "Свой сервер (OpenAI API)": ("чат", ""),
 }
 DEFAULT_PROVIDER = "Pollinations (бесплатно, без ключа)"
 # Профиль провайдера: (качество 1–5, для каких задач лучше всего, примерный бесплатный лимит в день (0 = без лимита / платно), подпись лимита)
@@ -775,15 +794,15 @@ def icon_image(name, size, color, bg=None):
         d.ellipse([4 * u, 4 * u, 20 * u, 20 * u], fill=c)
         d.ellipse([8.5 * u, 1.5 * u, 23 * u, 16 * u], fill=(0, 0, 0, 0))
     elif name == "gear":
-        pts = []
-        for k in range(24):
-            r = 10 if (k // 3) % 2 == 0 else 7.6
-            a = math.radians(k * 15)
-            pts.append((12 * u + r * u * math.cos(a), 12 * u + r * u * math.sin(a)))
-        d.polygon(pts, fill=c)
-        d.ellipse([8.6 * u, 8.6 * u, 15.4 * u, 15.4 * u], fill=(0, 0, 0, 0))
-        d.ellipse([8.6 * u, 8.6 * u, 15.4 * u, 15.4 * u], outline=c, width=w)
-        d.ellipse([9.6 * u + w, 9.6 * u + w, 14.4 * u - w, 14.4 * u - w], fill=(0, 0, 0, 0))
+        # 8 скруглённых зубцов + кольцо: читается на 14–18 px, без «ромбика»
+        for k in range(8):
+            a = math.radians(k * 45)
+            x1, y1 = 12 * u + 6.2 * u * math.cos(a), 12 * u + 6.2 * u * math.sin(a)
+            x2, y2 = 12 * u + 9.6 * u * math.cos(a), 12 * u + 9.6 * u * math.sin(a)
+            d.line([(x1, y1), (x2, y2)], fill=c, width=int(3.2 * u))
+            d.ellipse([x2 - 1.6 * u, y2 - 1.6 * u, x2 + 1.6 * u, y2 + 1.6 * u], fill=c)
+        d.ellipse([5.2 * u, 5.2 * u, 18.8 * u, 18.8 * u], fill=c)
+        d.ellipse([9.2 * u, 9.2 * u, 14.8 * u, 14.8 * u], fill=(0, 0, 0, 0))
     elif name == "close":
         line([(7, 7), (17, 17)])
         line([(17, 7), (7, 17)])
@@ -851,7 +870,9 @@ class GradientButton(tk.Canvas):
         pressed = Image.new("RGB", (width + g * 2, height + g * 2), hex_rgb(bg))
         pressed.paste(pill(pw, ph, c1, c2, bg, glow=g), ((width - pw) // 2, (height - ph) // 2))
         self._pressed = ImageTk.PhotoImage(pressed)
-        self._disabled = ImageTk.PhotoImage(flat_pill(width + g * 2, height + g * 2, T["FIELD"], bg, radius=(height + g * 2) // 2))
+        dis = Image.new("RGB", (width + g * 2, height + g * 2), hex_rgb(bg))
+        dis.paste(flat_pill(width, height, T["FIELD"], bg, radius=height // 2), (g, g))
+        self._disabled = ImageTk.PhotoImage(dis)
         self._frame = 0
         self._target = 0
         self._job = None
@@ -1184,17 +1205,21 @@ def page_background(w, h):
     key = (w, h, T["BG"])
     if key in _BG_CACHE:
         return _BG_CACHE[key]
-    base = Image.new("RGB", (w, h), hex_rgb(T["BG"]))
-    blobs = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    # считаем в 1/4 масштаба (размытие в 16 раз дешевле), потом растягиваем — глазу разницы нет
+    k = 4
+    sw, sh = max(1, w // k), max(1, h // k)
+    base = Image.new("RGB", (sw, sh), hex_rgb(T["BG"]))
+    blobs = Image.new("RGBA", (sw, sh), (0, 0, 0, 0))
     d = ImageDraw.Draw(blobs)
     dark = T["HERO_TEXT"] == "#FFFFFF"
     a1, a2 = (95, 80) if dark else (120, 100)
-    d.ellipse([w * 0.55, -h * 0.05, w * 1.15, h * 0.35], fill=hex_rgb(T["PINK"]) + (a1,))
-    d.ellipse([-w * 0.25, h * 0.15, w * 0.35, h * 0.6], fill=hex_rgb(T["VIOLET"]) + (a2,))
-    d.ellipse([w * 0.4, h * 0.55, w * 1.1, h * 1.05], fill=hex_rgb(T["VIOLET"]) + (a1 - 20,))
-    d.ellipse([w * 0.05, h * 0.75, w * 0.5, h * 1.15], fill=hex_rgb(T["PINK"]) + (a2 - 30,))
-    blobs = blobs.filter(ImageFilter.GaussianBlur(max(40, w * 0.12)))
+    d.ellipse([sw * 0.55, -sh * 0.05, sw * 1.15, sh * 0.35], fill=hex_rgb(T["PINK"]) + (a1,))
+    d.ellipse([-sw * 0.25, sh * 0.15, sw * 0.35, sh * 0.6], fill=hex_rgb(T["VIOLET"]) + (a2,))
+    d.ellipse([sw * 0.4, sh * 0.55, sw * 1.1, sh * 1.05], fill=hex_rgb(T["VIOLET"]) + (a1 - 20,))
+    d.ellipse([sw * 0.05, sh * 0.75, sw * 0.5, sh * 1.15], fill=hex_rgb(T["PINK"]) + (a2 - 30,))
+    blobs = blobs.filter(ImageFilter.GaussianBlur(max(10, sw * 0.12)))
     base.paste(blobs, (0, 0), blobs)
+    base = base.resize((w, h), Image.BILINEAR)
     _BG_CACHE.clear()
     _BG_CACHE[key] = base
     return base
@@ -1213,7 +1238,8 @@ def glass_card_image(bg, x, y, w, h, radius=22, shadow=14):
     out = crop.copy()
     out.paste(sh, (0, 0), sh)
     # стекло: размытый фон + тонировка цветом карточки
-    glass = crop.crop((shadow, shadow, shadow + w, shadow + h)).filter(ImageFilter.GaussianBlur(16))
+    g0 = crop.crop((shadow, shadow, shadow + w, shadow + h))
+    glass = g0.resize((max(1, w // 4), max(1, h // 4)), Image.BILINEAR).filter(ImageFilter.GaussianBlur(4)).resize((w, h), Image.BILINEAR)
     tint = Image.new("RGB", (w, h), hex_rgb(T["CARD"]))
     glass = Image.blend(glass, tint, 0.82 if dark else 0.90)
     mask = rounded_mask(w, h, radius)
@@ -1700,7 +1726,7 @@ class AIPanel(Panel):
     }
 
     def __init__(self, master):
-        super().__init__(master, 620, 620)
+        super().__init__(master, 640, 660)
         self.header("sparkle", T["VIOLET"], T["PINK_SOFT"], "Настроить ИИ")
         cfg = master.ai_cfg
         f_lab = ctk.CTkFont(family=UI_FONT, size=11, weight="bold")
@@ -1732,8 +1758,8 @@ class AIPanel(Panel):
         self.base_entry = self._entry(box, self.base, f_in)
         self.base_entry.grid(row=7, column=0, sticky="ew", pady=(4, 10))
 
-        self.hint = ctk.CTkLabel(box, text="", text_color=T["MUTED"], font=ctk.CTkFont(family=UI_FONT, size=12), anchor="nw",
-                                 justify="left", wraplength=530)
+        self.hint = ctk.CTkLabel(box, text="", text_color=T["HINT"], font=ctk.CTkFont(family=UI_FONT, size=12.5 if False else 13), anchor="nw",
+                                 justify="left", wraplength=540)
         self.hint.grid(row=8, column=0, sticky="nw")
 
         btns = ctk.CTkFrame(self.body, fg_color="transparent")
@@ -1743,8 +1769,8 @@ class AIPanel(Panel):
         self.keysite_btn = GhostButton(btns, "Где взять ключ", self._open_site, width=150, height=40, bg=T["CARD"], icon="key", icon_size=15)
         self.keysite_btn.pack(side="left")
         self._on_provider(self.prov.get(), first=True)
-        ctk.CTkLabel(box, text="✓ — ключ уже есть (встроенный или свой). Свой ключ заменяет встроенный.", text_color=T["MUTED"],
-                     font=ctk.CTkFont(family=UI_FONT, size=11), anchor="w").grid(row=9, column=0, sticky="w", pady=(8, 0))
+        ctk.CTkLabel(box, text="✓ — ключ уже есть (встроенный или свой). Свой ключ заменяет встроенный.", text_color=T["HINT"],
+                     font=ctk.CTkFont(family=UI_FONT, size=12), anchor="w").grid(row=9, column=0, sticky="w", pady=(8, 0))
         self.bind("<Return>", lambda e: self._save())
 
     def _entry(self, parent, var, font, secret=False):
@@ -2421,7 +2447,7 @@ class App(ctk.CTk):
         self.title("Whispy — YouTube в текст")
         self.geometry(self.settings.get("geometry", "1000x920"))
         self.minsize(760, 600)
-        self.attributes("-alpha", 0.0)
+        self.withdraw()  # собираем интерфейс скрытно и показываем уже готовым — без «полупрозрачного» старта
 
         self.mono = "Cascadia Code" if font_exists("Cascadia Code") else "Consolas"
         self.q = queue.Queue()
@@ -2470,7 +2496,7 @@ class App(ctk.CTk):
         self.after(50, self.dark_titlebar)
         self.after(50, self._hero_tick)
         self.after(600, self.set_icon)
-        self.after(30, lambda: self._fade_in(0))
+        self.after(30, self._reveal)
         if self.settings.get("auto_update", True):
             self.after(3000, lambda: self.check_updates(silent=True))
         if self.settings.get("prefetch", True):
@@ -2478,10 +2504,11 @@ class App(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
     # ---- системное ----
-    def _fade_in(self, i):
-        if i <= 10:
-            self.attributes("-alpha", ease_out(i / 10))
-            self.after(16, lambda: self._fade_in(i + 1))
+    def _reveal(self):
+        self.update_idletasks()
+        self.attributes("-alpha", 1.0)
+        self.deiconify()
+        self.lift()
 
     def set_icon(self):
         p = resource("whispy.ico")
@@ -2621,7 +2648,7 @@ class App(ctk.CTk):
             ],
             "ИИ": [(f"{k}  →  скопировать промпт + текст", (lambda k=k: self.copy_ai_prompt(k)), None, "doc") for k in AI_TYPES] + [
                 None,
-                ("Открыть Claude в браузере", lambda: webbrowser.open("https://claude.ai/new"), None, "sparkle"),
+                (f"Открыть {self.chat_name()} в браузере", self.open_chat, None, "sparkle"),
                 ("Настроить ИИ (провайдер, модель, ключ)…", self.ask_api_key, None, "gear"),
             ],
             "Помощь": [
@@ -2781,13 +2808,13 @@ class App(ctk.CTk):
         self.ai_seg = aiflow.add(self.seg(aiflow, AI_TYPES, self.ai_var))
         self.ai_prov_var = tk.StringVar(value=self.ai_cfg.get("provider", DEFAULT_PROVIDER))
         self.ai_prov_menu = aiflow.add(ctk.CTkOptionMenu(
-            aiflow, variable=self.ai_prov_var, values=list(AI_PROVIDERS.keys()), height=36, corner_radius=12, width=250,
+            aiflow, variable=self.ai_prov_var, values=self.ready_providers(), height=36, corner_radius=12, width=250,
             font=ctk.CTkFont(family=UI_FONT, size=12, weight="bold"), fg_color=T["FIELD"], button_color=T["VIOLET"], button_hover_color=T["PINK"],
             text_color=T["TEXT"], dropdown_fg_color=T["CARD"], dropdown_text_color=T["TEXT"], dropdown_hover_color=T["PINK_SOFT"],
             dropdown_font=ctk.CTkFont(family=UI_FONT, size=13), command=self.pick_provider))
         self.ai_api_btn = aiflow.add(GradientButton(aiflow, "Сделать через API", self.run_ai_api, width=170, height=38, bg=T["CARD"], font=(UI_FONT, 12, "bold")))
         self.ai_copy_btn = aiflow.add(GhostButton(aiflow, "Скопировать промпт + текст", lambda: self.copy_ai_prompt(), width=230, height=38, bg=T["CARD"]))
-        self.ai_open_btn = aiflow.add(GhostButton(aiflow, "Открыть Claude", lambda: webbrowser.open("https://claude.ai/new"), width=140, height=38, bg=T["CARD"]))
+        self.ai_open_btn = aiflow.add(GhostButton(aiflow, f"Открыть {self.chat_name()}", self.open_chat, width=140, height=38, bg=T["CARD"], icon="sparkle", icon_size=15))
         self.ai_result_btn = aiflow.add(GhostButton(aiflow, "Открыть результат", self.open_ai_file, width=160, height=38, bg=T["CARD"]))
         self.ai_key_btn = aiflow.add(GhostButton(aiflow, "Настроить ИИ", self.ask_api_key, width=130, height=38, bg=T["CARD"],
                                                  text_color=T["MUTED"], icon="gear", icon_size=16))
@@ -2910,10 +2937,9 @@ class App(ctk.CTk):
         self.theme = "light" if self.theme == "dark" else "dark"
         apply_theme(self.theme)
         self.persist()
-        self.attributes("-alpha", 0.0)
-        self.build()
+        self.build()  # мгновенно, без затемнения
         self.dark_titlebar()
-        self.after(20, lambda: self._fade_in(0))
+        self.update_idletasks()
 
     def set_theme(self, name):
         if name != self.theme:
@@ -3100,6 +3126,21 @@ class App(ctk.CTk):
         self.refresh_ai_hint()
         self.refresh_buttons()
 
+    def chat_name(self):
+        return AI_CHAT.get(self.ai_cfg.get("provider", DEFAULT_PROVIDER), ("чат", ""))[0]
+
+    def open_chat(self):
+        url = AI_CHAT.get(self.ai_cfg.get("provider", DEFAULT_PROVIDER), ("", ""))[1] or "https://claude.ai/new"
+        webbrowser.open(url)
+
+    def ready_providers(self):
+        """В блоке показываем только тех, кто готов к работе (есть ключ или ключ не нужен); остальные — в «Настроить ИИ»."""
+        lst = [n for n in AI_PROVIDERS if key_state(self.ai_cfg, n)]
+        cur = self.ai_cfg.get("provider", DEFAULT_PROVIDER)
+        if cur not in lst:
+            lst.insert(0, cur)
+        return lst
+
     def pick_provider(self, name):
         """Смена ИИ прямо из блока: без ключа — сразу открываем настройку."""
         self.ai_cfg["provider"], self.ai_cfg["model"], self.ai_cfg["base"] = name, "", ""
@@ -3112,7 +3153,8 @@ class App(ctk.CTk):
         name = self.ai_cfg.get("provider", DEFAULT_PROVIDER)
         if hasattr(self, "ai_prov_var"):
             self.ai_prov_var.set(name)
-            self.ai_prov_menu.configure(values=[n for n in AI_PROVIDERS])
+            self.ai_prov_menu.configure(values=self.ready_providers())
+            self.ai_open_btn.configure(text=f"Открыть {self.chat_name()}")
         q, best, _, lim = AI_PROFILE.get(name, (3, "", 0, ""))
         model = self.ai_cfg.get("model") or AI_PROVIDERS.get(name, AI_PROVIDERS[DEFAULT_PROVIDER])[2]
         st = key_state(self.ai_cfg, name)
