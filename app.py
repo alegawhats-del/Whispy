@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.7.2"
+APP_VERSION = "2.7.3"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -109,7 +109,7 @@ UI_FONT, FONT_DIR = _load_fonts()
 THEMES = {
     "dark": dict(
         BG="#0E0913", CARD="#18111F", BORDER="#2A1E35", FIELD="#221829", FIELD_BORDER="#3A2A47",
-        TEXT="#F5EEF9", MUTED="#8C7E98", PINK="#FF5FB4", VIOLET="#8B5CF6", PINK_HOVER="#FF79C2",
+        TEXT="#F5EEF9", MUTED="#9E90AA", HINT="#B5A8C2", PINK="#FF5FB4", VIOLET="#8B5CF6", PINK_HOVER="#FF79C2",
         PINK_SOFT="#2E1A33", OK="#4ADE9A", OK_SOFT="#13291F", ERR="#FF6B7A", ERR_SOFT="#321820",
         GREY_SOFT="#1E1726", HERO1="#1B0F2B", HERO2="#0E0913", HERO_TEXT="#FFFFFF", HERO_SUB="#CFC3DB",
         HERO_CHIP="#2A1A3A", HERO_CHIP_BORDER="#4A3460", TOAST="#2A1A3A", TOAST_TEXT="#FFFFFF",
@@ -118,7 +118,7 @@ THEMES = {
     ),
     "light": dict(
         BG="#F6F2FA", CARD="#FFFFFF", BORDER="#EADFF2", FIELD="#F4EEF9", FIELD_BORDER="#DCCDE8",
-        TEXT="#2A1E33", MUTED="#8A7D96", PINK="#E8449F", VIOLET="#7C4DFF", PINK_HOVER="#F25CB0",
+        TEXT="#2A1E33", MUTED="#6E6180", HINT="#5A4D6B", PINK="#E8449F", VIOLET="#7C4DFF", PINK_HOVER="#F25CB0",
         PINK_SOFT="#FBE6F2", OK="#1FA86B", OK_SOFT="#E3F6EC", ERR="#E24A5C", ERR_SOFT="#FDE6EA",
         GREY_SOFT="#ECE6F1", HERO1="#F4E6FB", HERO2="#E3D4F7", HERO_TEXT="#2A1E33", HERO_SUB="#5E4F70",
         HERO_CHIP="#FBF5FE", HERO_CHIP_BORDER="#D9C6EC", TOAST="#2A1E33", TOAST_TEXT="#FFFFFF",
@@ -188,6 +188,26 @@ AI_PROFILE = {
 # Порядок автовыбора, когда ключ встроен в сборку (лучший — первым)
 BUILTIN_ORDER = ["Google Gemini", "NVIDIA NIM (бесплатно)", "Ollama Cloud (бесплатно)", "Cerebras (бесплатно, быстро)",
                  "GitHub Models (бесплатно)", "Z.AI GLM (бесплатно)", "Groq (быстро, бесплатно)", "Mistral", "OpenRouter (любая модель)"]
+
+
+def key_state(cfg, name):
+    """'own' — свой ключ, 'builtin' — встроенный, 'free' — ключ не нужен, '' — ключа нет."""
+    if (cfg.get("keys", {}) or {}).get(name):
+        return "own"
+    if BUILTIN_KEYS.get(name):
+        return "builtin"
+    if not AI_PROVIDERS[name][3]:
+        return "free"
+    return ""
+
+
+def provider_label(cfg, name):
+    st = key_state(cfg, name)
+    return ("✓  " if st else "     ") + name
+
+
+def label_to_provider(label):
+    return label.lstrip("✓ ").strip() if label else DEFAULT_PROVIDER
 
 
 def best_builtin_provider(exclude=()):
@@ -420,38 +440,57 @@ def open_html(path, title="Whispy"):
         import importlib
         importlib.import_module("webview")
         args = [sys.executable] + ([] if getattr(sys, "frozen", False) else [os.path.abspath(__file__)])
-        subprocess.Popen(args + ["--viewer", os.path.abspath(path), title], close_fds=True)
+        proc = subprocess.Popen(args + ["--viewer", os.path.abspath(path), title], close_fds=True)
+
+        def watchdog():  # окно не поднялось или упало — открываем в браузере, чтобы пользователь не ждал
+            try:
+                rc = proc.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                return
+            if rc != 0:
+                webbrowser.open("file:///" + os.path.abspath(path).replace("\\", "/"))
+        threading.Thread(target=watchdog, daemon=True).start()
     except Exception:
         webbrowser.open("file:///" + os.path.abspath(path).replace("\\", "/"))
 
 
 def run_viewer(path, title):
-    """Окно просмотра HTML в стиле программы: тёмный заголовок Windows, иконка Whispy, фон как у приложения."""
+    """Окно просмотра HTML в стиле программы (Edge WebView2): тёмный заголовок и иконка через чистый WinAPI — без .NET-вызовов из чужого потока."""
     import webview
     url = "file:///" + os.path.abspath(path).replace("\\", "/")
     win = webview.create_window(title, url, width=1120, height=820, min_size=(760, 520), background_color="#0E0913", text_select=True)
 
     def style():
+        if sys.platform != "win32":
+            return
         try:
-            native = getattr(win, "native", None)
-            hwnd = int(native.Handle.ToInt64()) if native is not None and hasattr(native, "Handle") else None
-            if hwnd and sys.platform == "win32":
-                value = ctypes.c_int(1)
-                for attr in (20, 19):
-                    ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(value), ctypes.sizeof(value))
-                color = ctypes.c_int((0x13 << 16) | (0x09 << 8) | 0x0E)  # BGR от #0E0913
-                ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(color), ctypes.sizeof(color))
-                ico = resource("whispy.ico")
-                if ico:
-                    import importlib
-                    importlib.import_module("clr")
-                    drawing = importlib.import_module("System.Drawing")
-                    native.Icon = drawing.Icon(ico)
+            u32 = ctypes.windll.user32
+            hwnd = u32.FindWindowW(None, title)
+            if not hwnd:
+                return
+            value = ctypes.c_int(1)
+            for attr in (20, 19):
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(value), ctypes.sizeof(value))
+            color = ctypes.c_int((0x13 << 16) | (0x09 << 8) | 0x0E)  # BGR от #0E0913
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(color), ctypes.sizeof(color))
+            ico = resource("whispy.ico")
+            if ico:
+                for size, which in ((32, 1), (16, 0)):
+                    h = u32.LoadImageW(None, ico, 1, size, size, 0x10)  # IMAGE_ICON, LR_LOADFROMFILE
+                    if h:
+                        u32.SendMessageW(hwnd, 0x80, which, h)  # WM_SETICON
         except Exception:
             pass
 
-    win.events.shown += style
-    webview.start()
+    def delayed_style():
+        time.sleep(0.6)
+        style()
+
+    win.events.shown += lambda: threading.Thread(target=delayed_style, daemon=True).start()
+    try:
+        webview.start(gui="edgechromium")
+    except Exception:
+        webview.start()
 
 
 def reveal_in_folder(path):
@@ -459,6 +498,24 @@ def reveal_in_folder(path):
         subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
     else:
         open_path(os.path.dirname(path) if path else OUT_DIR)
+
+
+def ellipsize(text, font, max_w):
+    """Обрезает строку с «…» так, чтобы она помещалась в max_w пикселей (CTkFont или tkfont)."""
+    try:
+        measure = font.measure
+    except AttributeError:
+        return text
+    if max_w <= 20 or measure(text) <= max_w:
+        return text
+    lo, hi = 0, len(text)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if measure(text[:mid] + "…") <= max_w:
+            lo = mid
+        else:
+            hi = mid - 1
+    return text[:lo] + "…"
 
 
 def hex_rgb(h):
@@ -1106,10 +1163,11 @@ class Flow(ctk.CTkFrame):
             return
         x, y, row_h = 0, 0, 0
         for w in self.items:
-            rw, rh = w.winfo_reqwidth(), w.winfo_reqheight()
+            g = getattr(w, "GLOW", 0) if isinstance(w, GradientButton) else 0  # свечение не считается за размер
+            rw, rh = w.winfo_reqwidth() - g * 2, w.winfo_reqheight() - g * 2
             if x > 0 and x + rw > width:
                 x, y, row_h = 0, y + row_h + self.vgap, 0
-            w.place(x=x, y=y)
+            w.place(x=x - g, y=y - g)
             x += rw + self.gap
             row_h = max(row_h, rh)
         total = y + row_h
@@ -1582,7 +1640,10 @@ class FilesPanel(Panel):
             im = ImageTk.PhotoImage(icon_image(glyph, 16, T["PINK"], bg=T["PINK_SOFT"]))
             self._row_icons.append(im)
             ctk.CTkLabel(row, text="", image=im, width=34, height=34, corner_radius=17, fg_color=T["PINK_SOFT"]).grid(row=0, column=0, rowspan=2, padx=(10, 10), pady=8)
-            ctk.CTkLabel(row, text=os.path.basename(p), anchor="w", text_color=T["TEXT"], font=f_name).grid(row=0, column=1, sticky="ew", pady=(8, 0))
+            name_lbl = ctk.CTkLabel(row, text=os.path.basename(p), anchor="w", text_color=T["TEXT"], font=f_name)
+            name_lbl.grid(row=0, column=1, sticky="ew", pady=(8, 0))
+            name_lbl.full = os.path.basename(p)
+            name_lbl.bind("<Configure>", lambda e, l=name_lbl, fn=f_name: self.after_idle(lambda: self._fit_name(l, fn, l.winfo_width() - 8)), add="+")
             meta = f"{kind}  ·  {st.st_size / 1024:.0f} КБ  ·  {datetime.datetime.fromtimestamp(st.st_mtime):%d.%m.%Y %H:%M}"
             ctk.CTkLabel(row, text=meta, anchor="w", text_color=T["MUTED"], font=f_meta).grid(row=1, column=1, sticky="ew", pady=(0, 8))
             b = ctk.CTkFrame(row, fg_color="transparent")
@@ -1592,6 +1653,18 @@ class FilesPanel(Panel):
             GhostButton(b, "В папке", lambda p=p: reveal_in_folder(p), width=78, height=30, bg=T["CARD"], font=(UI_FONT, 11, "bold")).pack(side="left", padx=2)
             if ext == ".txt":
                 GhostButton(b, "Копировать", lambda p=p: self._copy(p), width=96, height=30, bg=T["CARD"], font=(UI_FONT, 11, "bold")).pack(side="left", padx=2)
+            else:  # у всех рядов по три кнопки — колонки совпадают
+                GhostButton(b, "В браузере", lambda p=p: webbrowser.open("file:///" + os.path.abspath(p).replace("\\", "/")),
+                            width=96, height=30, bg=T["CARD"], font=(UI_FONT, 11, "bold")).pack(side="left", padx=2)
+
+    @staticmethod
+    def _fit_name(lbl, font, max_w):
+        try:
+            new = ellipsize(lbl.full, font, max_w)
+            if lbl.cget("text") != new:
+                lbl.configure(text=new)
+        except Exception:
+            pass
 
     def _copy(self, p):
         try:
@@ -1637,8 +1710,8 @@ class AIPanel(Panel):
         box.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(box, text="ПРОВАЙДЕР", text_color=T["MUTED"], font=f_lab, anchor="w").grid(row=0, column=0, sticky="w")
-        self.prov = tk.StringVar(value=cfg.get("provider", DEFAULT_PROVIDER))
-        ctk.CTkOptionMenu(box, variable=self.prov, values=list(AI_PROVIDERS.keys()), height=38, corner_radius=12, font=f_in,
+        self.prov = tk.StringVar(value=provider_label(cfg, cfg.get("provider", DEFAULT_PROVIDER)))
+        ctk.CTkOptionMenu(box, variable=self.prov, values=[provider_label(cfg, n) for n in AI_PROVIDERS], height=38, corner_radius=12, font=f_in,
                           fg_color=T["FIELD"], button_color=T["VIOLET"], button_hover_color=T["PINK"], text_color=T["TEXT"],
                           dropdown_fg_color=T["CARD"], dropdown_text_color=T["TEXT"], dropdown_hover_color=T["PINK_SOFT"],
                           dropdown_font=f_in, command=self._on_provider).grid(row=1, column=0, sticky="ew", pady=(4, 10))
@@ -1670,6 +1743,8 @@ class AIPanel(Panel):
         self.keysite_btn = GhostButton(btns, "Где взять ключ", self._open_site, width=150, height=40, bg=T["CARD"], icon="key", icon_size=15)
         self.keysite_btn.pack(side="left")
         self._on_provider(self.prov.get(), first=True)
+        ctk.CTkLabel(box, text="✓ — ключ уже есть (встроенный или свой). Свой ключ заменяет встроенный.", text_color=T["MUTED"],
+                     font=ctk.CTkFont(family=UI_FONT, size=11), anchor="w").grid(row=9, column=0, sticky="w", pady=(8, 0))
         self.bind("<Return>", lambda e: self._save())
 
     def _entry(self, parent, var, font, secret=False):
@@ -1680,6 +1755,7 @@ class AIPanel(Panel):
         return e
 
     def _on_provider(self, name, first=False):
+        name = label_to_provider(name)
         proto, base, model, need_key, site = AI_PROVIDERS[name]
         cfg = self.app.ai_cfg
         saved_same = first and cfg.get("provider") == name
@@ -1687,8 +1763,14 @@ class AIPanel(Panel):
         self.base.set((cfg.get("base") if saved_same else "") or base)
         self.key.set(cfg.get("keys", {}).get(name, ""))
         self.key_entry.configure(state="normal" if need_key else "disabled")
-        builtin = bool(BUILTIN_KEYS.get(name))
-        self.key_lbl.configure(text=("API-КЛЮЧ (необязательно — есть встроенный)" if builtin else "API-КЛЮЧ") if need_key else "API-КЛЮЧ — не нужен")
+        st = key_state(self.app.ai_cfg, name)
+        lbl = {"own": "API-КЛЮЧ — свой сохранён ✓ (можно заменить)", "builtin": "API-КЛЮЧ — встроенный ✓ (введи свой, чтобы заменить)",
+               "free": "API-КЛЮЧ — не нужен", "": "API-КЛЮЧ — нужно ввести"}[st]
+        self.key_lbl.configure(text=lbl, text_color=T["OK"] if st in ("own", "builtin") else T["MUTED"])
+        try:
+            self.key_entry.configure(placeholder_text="встроенный ключ активен" if st == "builtin" else "")
+        except Exception:
+            pass
         self.keysite_btn.configure(text="Где взять ключ" if need_key else "Скачать Ollama" if "Ollama" in name else "Где взять ключ",
                                    state="normal" if site else "disabled")
         # адрес сервера подставляется сам; показываем поле только для локальных вариантов
@@ -1703,13 +1785,13 @@ class AIPanel(Panel):
         self.hint.configure(text=prof + "\n\n" + self.KEY_STEPS.get(name, "") + "\n\nКлюч хранится только на этом компьютере.")
 
     def _open_site(self):
-        site = AI_PROVIDERS[self.prov.get()][4]
+        site = AI_PROVIDERS[label_to_provider(self.prov.get())][4]
         if site:
             webbrowser.open(site)
 
     def _save(self):
         cfg = self.app.ai_cfg
-        name = self.prov.get()
+        name = label_to_provider(self.prov.get())
         proto, base, *_ = AI_PROVIDERS[name]
         cfg["provider"] = name
         cfg["model"] = self.model.get().strip()
@@ -2481,8 +2563,8 @@ class App(ctk.CTk):
 
     def hint(self, parent, text, **grid):
         """Подсказка, которая переносится по реальной ширине карточки (никогда не вылезает за край)."""
-        lb = ctk.CTkLabel(parent, text=text, text_color=T["MUTED"], anchor="w", justify="left",
-                          font=ctk.CTkFont(family=UI_FONT, size=11))
+        lb = ctk.CTkLabel(parent, text=text, text_color=T["HINT"], anchor="w", justify="left",
+                          font=ctk.CTkFont(family=UI_FONT, size=12))
         lb.grid(**grid)
         parent.bind("<Configure>", lambda e, l=lb: l.configure(wraplength=max(200, e.width - 48)), add="+")
         return lb
@@ -2697,6 +2779,12 @@ class App(ctk.CTk):
         aiflow = Flow(ai, gap=10, vgap=10)
         aiflow.grid(row=1, column=0, sticky="ew", padx=22, pady=(0, 6))
         self.ai_seg = aiflow.add(self.seg(aiflow, AI_TYPES, self.ai_var))
+        self.ai_prov_var = tk.StringVar(value=self.ai_cfg.get("provider", DEFAULT_PROVIDER))
+        self.ai_prov_menu = aiflow.add(ctk.CTkOptionMenu(
+            aiflow, variable=self.ai_prov_var, values=list(AI_PROVIDERS.keys()), height=36, corner_radius=12, width=250,
+            font=ctk.CTkFont(family=UI_FONT, size=12, weight="bold"), fg_color=T["FIELD"], button_color=T["VIOLET"], button_hover_color=T["PINK"],
+            text_color=T["TEXT"], dropdown_fg_color=T["CARD"], dropdown_text_color=T["TEXT"], dropdown_hover_color=T["PINK_SOFT"],
+            dropdown_font=ctk.CTkFont(family=UI_FONT, size=13), command=self.pick_provider))
         self.ai_api_btn = aiflow.add(GradientButton(aiflow, "Сделать через API", self.run_ai_api, width=170, height=38, bg=T["CARD"], font=(UI_FONT, 12, "bold")))
         self.ai_copy_btn = aiflow.add(GhostButton(aiflow, "Скопировать промпт + текст", lambda: self.copy_ai_prompt(), width=230, height=38, bg=T["CARD"]))
         self.ai_open_btn = aiflow.add(GhostButton(aiflow, "Открыть Claude", lambda: webbrowser.open("https://claude.ai/new"), width=140, height=38, bg=T["CARD"]))
@@ -2711,7 +2799,7 @@ class App(ctk.CTk):
         self.copy_btn = bottom.add(GhostButton(bottom, "Копировать всё", self.copy_all, width=160, height=40, bg=T["CARD"], icon="doc", icon_size=15))
         self.file_btn = bottom.add(GhostButton(bottom, "Открыть файл", self.open_file, width=140, height=40, bg=T["CARD"]))
         self.folder_btn = bottom.add(GhostButton(bottom, "Показать в папке", lambda: reveal_in_folder(self.last_path), width=150, height=40, bg=T["CARD"], icon="folder", icon_size=15))
-        self.path_lbl = bottom.add(ctk.CTkLabel(bottom, text=os.path.basename(self.last_path) if self.last_path else "", font=f_small, text_color=T["MUTED"]))
+        self.path_lbl = bottom.add(ctk.CTkLabel(bottom, text=ellipsize(os.path.basename(self.last_path), f_small, 360) if self.last_path else "", font=f_small, text_color=T["MUTED"]))
         self._scroll_target = None
         self.refresh_buttons()
         self.unbind_all("<MouseWheel>")
@@ -3012,12 +3100,25 @@ class App(ctk.CTk):
         self.refresh_ai_hint()
         self.refresh_buttons()
 
+    def pick_provider(self, name):
+        """Смена ИИ прямо из блока: без ключа — сразу открываем настройку."""
+        self.ai_cfg["provider"], self.ai_cfg["model"], self.ai_cfg["base"] = name, "", ""
+        self.persist()
+        self.refresh_ai_hint()
+        if not self.ai_ready():
+            self.ask_api_key()
+
     def refresh_ai_hint(self):
         name = self.ai_cfg.get("provider", DEFAULT_PROVIDER)
+        if hasattr(self, "ai_prov_var"):
+            self.ai_prov_var.set(name)
+            self.ai_prov_menu.configure(values=[n for n in AI_PROVIDERS])
         q, best, _, lim = AI_PROFILE.get(name, (3, "", 0, ""))
         model = self.ai_cfg.get("model") or AI_PROVIDERS.get(name, AI_PROVIDERS[DEFAULT_PROVIDER])[2]
-        self.ai_hint_lbl.configure(text=f"Сейчас: {name} · {model} · {'★' * q}{'☆' * (5 - q)}  —  лучше всего: {best}.  {usage_text(self.ai_cfg, name)}"
-                                        + (f"  ·  лимит: {lim}" if lim else "") + "\nРезультат — интерактивная страница: карточки, таблица, схема, слайды или инфографика. Сменить ИИ — «Настроить ИИ».")
+        st = key_state(self.ai_cfg, name)
+        ks = {"own": "свой ключ ✓", "builtin": "встроенный ключ ✓", "free": "без ключа", "": "нужен ключ — «Настроить ИИ»"}[st]
+        self.ai_hint_lbl.configure(text=f"{model} · {'★' * q}{'☆' * (5 - q)} · {ks}  —  лучше всего: {best}.\n{usage_text(self.ai_cfg, name)}"
+                                        + (f"  ·  лимит: {lim}" if lim else "") + "\nРезультат — интерактивная страница: карточки, таблица, схема, слайды или инфографика.")
 
     def run_ai_api(self, tried=None):
         if not self.all_lines or (self.ai_worker and self.ai_worker.is_alive()):
@@ -3190,7 +3291,7 @@ class App(ctk.CTk):
                 elif kind == "done":
                     self.last_path = d["path"]
                     self.last_title = d["title"]
-                    self.path_lbl.configure(text=os.path.basename(d["path"]))
+                    self.path_lbl.configure(text=ellipsize(os.path.basename(d["path"]), ctk.CTkFont(family=UI_FONT, size=11), 360))
                     self.status_lbl.configure(text=f"Готово: {d['lines']} строк · {d['source']}", text_color=T["OK"])
                     self.textbox.see("1.0")
                     self.finish_ui()
@@ -3304,7 +3405,7 @@ if __name__ == "__main__":
         try:
             run_viewer(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "Whispy")
         except Exception:
-            webbrowser.open("file:///" + os.path.abspath(sys.argv[2]).replace("\\", "/"))
+            sys.exit(2)  # родитель откроет файл в браузере
         sys.exit(0)
     if sys.platform == "win32":
         try:
