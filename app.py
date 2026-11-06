@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.8.0"
+APP_VERSION = "2.8.1"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -806,6 +806,14 @@ def icon_image(name, size, color, bg=None):
     elif name == "close":
         line([(7, 7), (17, 17)])
         line([(17, 7), (7, 17)])
+    elif name == "minimize":
+        line([(6, 12), (18, 12)])
+    elif name == "maximize":
+        d.rounded_rectangle([6 * u, 6 * u, 18 * u, 18 * u], radius=2 * u, outline=c, width=w)
+    elif name == "restore":
+        d.rounded_rectangle([5 * u, 8 * u, 15 * u, 18 * u], radius=2 * u, outline=c, width=w)
+        line([(9, 6), (18, 6)])
+        line([(18, 6), (18, 15)])
     elif name == "sparkle":
         d.polygon([(12 * u, 2 * u), (14.2 * u, 9.8 * u), (22 * u, 12 * u), (14.2 * u, 14.2 * u),
                    (12 * u, 22 * u), (9.8 * u, 14.2 * u), (2 * u, 12 * u), (9.8 * u, 9.8 * u)], fill=c)
@@ -1009,6 +1017,15 @@ class GhostButton(tk.Canvas):
         self._hover(self._hovering)
         if 0 <= e.x <= self.winfo_width() and 0 <= e.y <= self.winfo_height() and self.command:
             self.after(10, self.command)
+
+    def set_icon(self, name):
+        """Сменить иконку (например, «развернуть» ↔ «восстановить»)."""
+        if not self._icon_id:
+            return
+        self._icon_name = name
+        for k, col in (("normal", self._tc), ("hover", self._accent), ("disabled", T["BORDER"])):
+            self._icon_imgs[k] = ImageTk.PhotoImage(icon_image(name, self._icon_size, col))
+        self.itemconfigure(self._icon_id, image=self._icon_imgs["hover" if self._hovering else "normal"])
 
     def set_plain(self):
         w, h = int(self["width"]), int(self["height"])
@@ -1365,6 +1382,99 @@ def _transparent(win):
             pass
     win.configure(bg=T["BG"])
     return False
+
+
+class CustomFrame:
+    """Своя рамка окна на Windows: системный заголовок убираем через WM_NCCALCSIZE, а перетаскивание, прилипание к краям,
+    двойной клик и изменение размера за края остаются родными (WM_NCHITTEST). Если что-то не так — остаётся системная рамка."""
+    WM_NCCALCSIZE, WM_NCHITTEST = 0x0083, 0x0084
+    HT = {"client": 1, "caption": 2, "left": 10, "right": 11, "top": 12, "topleft": 13, "topright": 14, "bottom": 15, "bottomleft": 16, "bottomright": 17}
+
+    def __init__(self, app, bar_height=44, border=6):
+        self.app, self.bar_h, self.border = app, bar_height, border
+        self.ok = False
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes.wintypes as wt
+            self.u32 = ctypes.windll.user32
+            self.hwnd = self.u32.GetParent(app.winfo_id())
+            LRESULT, WPARAM, LPARAM = ctypes.c_ssize_t, ctypes.c_size_t, ctypes.c_ssize_t
+            self.PROC = ctypes.WINFUNCTYPE(LRESULT, wt.HWND, wt.UINT, WPARAM, LPARAM)
+            self.u32.SetWindowLongPtrW.restype = ctypes.c_ssize_t
+            self.u32.SetWindowLongPtrW.argtypes = [wt.HWND, ctypes.c_int, ctypes.c_ssize_t]
+            self.u32.CallWindowProcW.restype = LRESULT
+            self.u32.CallWindowProcW.argtypes = [ctypes.c_ssize_t, wt.HWND, wt.UINT, WPARAM, LPARAM]
+            self.u32.DefWindowProcW.restype = LRESULT
+            self.u32.DefWindowProcW.argtypes = [wt.HWND, wt.UINT, WPARAM, LPARAM]
+            self._proc = self.PROC(self._wndproc)  # держим ссылку — иначе сборщик мусора убьёт колбэк
+            self._old = self.u32.SetWindowLongPtrW(self.hwnd, -4, ctypes.cast(self._proc, ctypes.c_void_p).value)
+            if not self._old:
+                return
+            self.u32.SetWindowPos(self.hwnd, None, 0, 0, 0, 0, 0x0020 | 0x0002 | 0x0001 | 0x0004)  # FRAMECHANGED|NOMOVE|NOSIZE|NOZORDER
+            self.ok = True
+        except Exception:
+            self.ok = False
+
+    def restore_native(self):
+        if self.ok:
+            try:
+                self.u32.SetWindowLongPtrW(self.hwnd, -4, self._old)
+                self.u32.SetWindowPos(self.hwnd, None, 0, 0, 0, 0, 0x0020 | 0x0002 | 0x0001 | 0x0004)
+            except Exception:
+                pass
+            self.ok = False
+
+    def _wndproc(self, hwnd, msg, wparam, lparam):
+        try:
+            if msg == self.WM_NCCALCSIZE and wparam:
+                if self.u32.IsZoomed(hwnd):  # в развёрнутом виде Windows прячет рамку за край экрана — компенсируем
+                    rc = ctypes.cast(lparam, ctypes.POINTER(ctypes.c_long * 4)).contents
+                    pad = self.u32.GetSystemMetrics(32) + self.u32.GetSystemMetrics(92)
+                    rc[0] += pad
+                    rc[1] += pad
+                    rc[2] -= pad
+                    rc[3] -= pad
+                return 0
+            if msg == self.WM_NCHITTEST:
+                x = ctypes.c_short(lparam & 0xFFFF).value
+                y = ctypes.c_short((lparam >> 16) & 0xFFFF).value
+                rc = (ctypes.c_long * 4)()
+                self.u32.GetWindowRect(hwnd, ctypes.byref(rc))
+                b = self.border
+                zoomed = self.u32.IsZoomed(hwnd)
+                if not zoomed:
+                    left, right = x < rc[0] + b, x >= rc[2] - b
+                    top, bottom = y < rc[1] + b, y >= rc[3] - b
+                    if top and left:
+                        return self.HT["topleft"]
+                    if top and right:
+                        return self.HT["topright"]
+                    if bottom and left:
+                        return self.HT["bottomleft"]
+                    if bottom and right:
+                        return self.HT["bottomright"]
+                    if left:
+                        return self.HT["left"]
+                    if right:
+                        return self.HT["right"]
+                    if top:
+                        return self.HT["top"]
+                    if bottom:
+                        return self.HT["bottom"]
+                pad = (self.u32.GetSystemMetrics(32) + self.u32.GetSystemMetrics(92)) if zoomed else 0
+                if y < rc[1] + pad + self.bar_h:
+                    # над кнопками — клиент; над пустым местом панели, логотипом и названием — заголовок (тянуть, двойной клик)
+                    cur = self.app.winfo_containing(x, y)
+                    while cur is not None and cur is not self.app.titlebar:
+                        if isinstance(cur, GhostButton):
+                            return self.HT["client"]
+                        cur = cur.master
+                    return self.HT["caption"] if cur is self.app.titlebar else self.HT["client"]
+                return self.HT["client"]
+        except Exception:
+            pass
+        return self.u32.CallWindowProcW(self._old, hwnd, msg, wparam, lparam)
 
 
 class Panel(tk.Toplevel):
@@ -2509,6 +2619,56 @@ class App(ctk.CTk):
         self.attributes("-alpha", 1.0)
         self.deiconify()
         self.lift()
+        self.after(50, self._install_frame)
+
+    def custom_frame_on(self):
+        return sys.platform == "win32" and self.settings.get("custom_frame", True)
+
+    def _install_frame(self):
+        self.win_frame = getattr(self, "win_frame", None)
+        if self.custom_frame_on() and (self.win_frame is None or not self.win_frame.ok):
+            self.win_frame = CustomFrame(self, bar_height=44)
+            if not self.win_frame.ok and hasattr(self, "win_btns"):
+                for b in self.win_btns.values():
+                    b.pack_forget()
+            elif self.win_frame.ok:
+                self._zoomed = None
+                self.bind("<Configure>", self._sync_max_icon, add="+")
+        elif not self.custom_frame_on() and self.win_frame is not None and self.win_frame.ok:
+            self.win_frame.restore_native()
+
+    def _sync_max_icon(self, e=None):
+        try:
+            z = bool(ctypes.windll.user32.IsZoomed(ctypes.windll.user32.GetParent(self.winfo_id())))
+            if z != self._zoomed and hasattr(self, "win_btns"):
+                self._zoomed = z
+                self.win_btns["max"].set_icon("restore" if z else "maximize")
+        except Exception:
+            pass
+
+    def minimize(self):
+        try:
+            ctypes.windll.user32.ShowWindow(ctypes.windll.user32.GetParent(self.winfo_id()), 6)  # SW_MINIMIZE
+        except Exception:
+            self.iconify()
+
+    def toggle_max(self):
+        try:
+            u32 = ctypes.windll.user32
+            hwnd = u32.GetParent(self.winfo_id())
+            zoomed = u32.IsZoomed(hwnd)
+            u32.ShowWindow(hwnd, 9 if zoomed else 3)  # SW_RESTORE / SW_MAXIMIZE
+            if hasattr(self, "win_btns"):
+                self.win_btns["max"].set_icon("maximize" if zoomed else "restore")
+        except Exception:
+            self.state("normal" if self.state() == "zoomed" else "zoomed")
+
+    def toggle_frame(self):
+        self.settings["custom_frame"] = not self.settings.get("custom_frame", True)
+        self.persist()
+        self._install_frame()
+        self.build()
+        self.dark_titlebar()
 
     def set_icon(self):
         p = resource("whispy.ico")
@@ -2645,6 +2805,9 @@ class App(ctk.CTk):
                 ("Светлая тема", lambda: self.set_theme("light"), None, "sun"),
                 None,
                 ("Окно по умолчанию (1000×920)", lambda: self.geometry("1000x920"), None, "pin"),
+                None,
+                ("Рамка окна в стиле Whispy", self.toggle_frame, "вкл" if self.settings.get("custom_frame", True) else "выкл",
+                 "check" if self.settings.get("custom_frame", True) else None),
             ],
             "ИИ": [(f"{k}  →  скопировать промпт + текст", (lambda k=k: self.copy_ai_prompt(k)), None, "doc") for k in AI_TYPES] + [
                 None,
@@ -2687,6 +2850,19 @@ class App(ctk.CTk):
         bar = ctk.CTkFrame(self, fg_color=T["BG"], corner_radius=0, height=44)
         bar.grid(row=0, column=0, columnspan=2, sticky="ew")
         bar.grid_propagate(False)
+        self.titlebar = bar
+        if self.custom_frame_on():
+            # кнопки окна в стиле приложения: свернуть / развернуть / закрыть
+            wb = ctk.CTkFrame(bar, fg_color="transparent")
+            wb.pack(side="right", padx=(0, 10), pady=7)
+            wb._drag_zone = True
+            self.win_btns = {}
+            for key, icon, cmd in (("close", "close", self.on_close), ("max", "maximize", self.toggle_max), ("min", "minimize", self.minimize)):
+                btn = GhostButton(wb, "", cmd, width=34, height=30, bg=T["BG"], text_color=T["MUTED"], radius=15, icon=icon, icon_size=14)
+                btn.set_plain()
+                btn.pack(side="right", padx=1)
+                self.win_btns[key] = btn
+            ctk.CTkFrame(bar, fg_color=T["BORDER"], width=1, height=20).pack(side="right", padx=(6, 6), pady=12)
         lg = logo_image(20)
         if lg is not None:
             self._bar_logo = ImageTk.PhotoImage(lg)
@@ -2704,7 +2880,7 @@ class App(ctk.CTk):
         self.theme_btn = GhostButton(bar, "Светлая" if self.theme == "dark" else "Тёмная", self.toggle_theme, width=112, height=30,
                                      bg=T["BG"], text_color=T["MUTED"], radius=15, font=(UI_FONT, 11, "bold"),
                                      icon="sun" if self.theme == "dark" else "moon", icon_size=15)
-        self.theme_btn.pack(side="right", padx=(0, 24), pady=7)
+        self.theme_btn.pack(side="right", padx=(0, 24 if not self.custom_frame_on() else 4), pady=7)
         self.files_btn = GhostButton(bar, "Мои файлы", self.show_files, width=126, height=30, bg=T["BG"], text_color=T["MUTED"],
                                      radius=15, font=(UI_FONT, 11, "bold"), icon="folder", icon_size=15)
         self.files_btn.pack(side="right", padx=(0, 8), pady=7)
