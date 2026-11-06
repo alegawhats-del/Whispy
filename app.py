@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.7.1"
+APP_VERSION = "2.7.2"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -642,7 +642,7 @@ def flat_pill(w, h, color, bg, radius=None, border=None):
     return canvas
 
 
-def hero_image(w, h, chip_text, chip_font):
+def hero_image(w, h, chip_text, chip_font, under=None):
     img = gradient(w, h, T["HERO1"], T["HERO2"])
     blobs = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     bd = ImageDraw.Draw(blobs)
@@ -667,7 +667,8 @@ def hero_image(w, h, chip_text, chip_font):
     logo = logo_image(64)
     if logo is not None:
         img.paste(logo, (30, 22), logo)
-    out = Image.new("RGB", (w, h), hex_rgb(T["BG"]))
+    # углы — фон страницы под шапкой (а не плоский цвет), поэтому «белых углов» нет ни в одной теме
+    out = under.convert("RGB").resize((w, h)) if under is not None else Image.new("RGB", (w, h), hex_rgb(T["BG"]))
     out.paste(img, (0, 0), rounded_mask(w, h, 22))
     return out, cw
 
@@ -1076,40 +1077,44 @@ class Chip(ctk.CTkLabel):
 
 
 class Flow(ctk.CTkFrame):
-    """Контейнер с переносом элементов на новую строку по ширине."""
+    """Контейнер с переносом элементов на новую строку: точные пиксельные позиции, строки независимы."""
 
     def __init__(self, master, gap=10, vgap=10, **kw):
-        super().__init__(master, fg_color="transparent", **kw)
+        super().__init__(master, fg_color="transparent", height=10, **kw)
         self.items = []
         self.gap, self.vgap = gap, vgap
         self._job = None
         self.bind("<Configure>", lambda e: self.relayout())
 
-    def add(self, w, **grid_kw):
-        self.items.append((w, grid_kw))
+    def add(self, w, **_):
+        self.items.append(w)
+        try:
+            w.bind("<Configure>", lambda e: self.relayout(), add="+")
+        except NotImplementedError:
+            pass
         return w
 
     def relayout(self):
         if self._job:
             self.after_cancel(self._job)
-        self._job = self.after(30, self._do)
+        self._job = self.after(20, self._do)
 
     def _do(self):
         self._job = None
         width = self.winfo_width()
         if width < 50:
             return
-        for w, _ in self.items:
-            w.grid_forget()
-        x, row, col = 0, 0, 0
-        for w, kw in self.items:
-            rw = w.winfo_reqwidth()
+        x, y, row_h = 0, 0, 0
+        for w in self.items:
+            rw, rh = w.winfo_reqwidth(), w.winfo_reqheight()
             if x > 0 and x + rw > width:
-                row += 1
-                x, col = 0, 0
-            w.grid(row=row, column=col, padx=(0, self.gap), pady=(0, self.vgap), sticky="w", **kw)
+                x, y, row_h = 0, y + row_h + self.vgap, 0
+            w.place(x=x, y=y)
             x += rw + self.gap
-            col += 1
+            row_h = max(row_h, rh)
+        total = y + row_h
+        if int(self["height"]) != total:
+            self.configure(height=total)
 
 
 # ---------- «жидкое стекло»: фон страницы и стеклянные карточки ----------
@@ -1144,28 +1149,27 @@ def glass_card_image(bg, x, y, w, h, radius=22, shadow=14):
     dark = T["HERO_TEXT"] == "#FFFFFF"
     # тень
     sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    ImageDraw.Draw(sh).rounded_rectangle([shadow, shadow + 4, shadow + w, shadow + h + 4], radius=radius,
-                                         fill=(0, 0, 0, 110 if dark else 45))
-    sh = sh.filter(ImageFilter.GaussianBlur(shadow * 0.7))
+    ImageDraw.Draw(sh).rounded_rectangle([shadow, shadow + 5, shadow + w, shadow + h + 5], radius=radius,
+                                         fill=(0, 0, 0, 120) if dark else (60, 30, 110, 70))
+    sh = sh.filter(ImageFilter.GaussianBlur(shadow * 0.75))
     out = crop.copy()
     out.paste(sh, (0, 0), sh)
     # стекло: размытый фон + тонировка цветом карточки
     glass = crop.crop((shadow, shadow, shadow + w, shadow + h)).filter(ImageFilter.GaussianBlur(16))
     tint = Image.new("RGB", (w, h), hex_rgb(T["CARD"]))
-    glass = Image.blend(glass, tint, 0.78 if dark else 0.72)
+    glass = Image.blend(glass, tint, 0.82 if dark else 0.90)
     mask = rounded_mask(w, h, radius)
     out.paste(glass, (shadow, shadow), mask)
     # световая кромка сверху и тонкая граница
     ring = Image.new("RGBA", (w * 2, h * 2), (0, 0, 0, 0))
     rd = ImageDraw.Draw(ring)
-    rd.rounded_rectangle([1, 1, w * 2 - 2, h * 2 - 2], radius=radius * 2, outline=(255, 255, 255, 60 if dark else 200), width=2)
-    rd.rounded_rectangle([1, 1, w * 2 - 2, h * 2 - 2], radius=radius * 2, outline=(255, 255, 255, 0), width=0)
+    rd.rounded_rectangle([1, 1, w * 2 - 2, h * 2 - 2], radius=radius * 2, outline=(255, 255, 255, 70) if dark else (120, 90, 190, 70), width=2)
     ring = ring.resize((w, h), Image.LANCZOS)
     # кромка ярче сверху, слабее снизу
     grad = Image.linear_gradient("L").resize((w, h))
     ring.putalpha(Image.eval(ring.split()[3], lambda v: v).point(lambda v: v))
     alpha = ring.split()[3]
-    alpha = Image.composite(alpha, alpha.point(lambda v: v // 3), grad.point(lambda v: 255 - v))
+    alpha = Image.composite(alpha, alpha.point(lambda v: v // 2), grad.point(lambda v: 255 - v))
     ring.putalpha(alpha)
     out.paste(ring, (shadow, shadow), ring)
     return out
@@ -1221,6 +1225,11 @@ class GlassPage(tk.Canvas):
         for item, widget in self.items:
             if isinstance(widget, GlassCard):
                 widget.render(self._bg_pil, self.pad, y, inner)
+            elif hasattr(widget, "set_under"):
+                x0 = self.pad + GlassCard.SHADOW
+                ww = inner - GlassCard.SHADOW * 2
+                hh = widget.winfo_reqheight()
+                widget.set_under(self._bg_pil.crop((x0, y + 8, x0 + ww, y + 8 + hh)))
             y += widget.winfo_reqheight() + self.gap + (0 if isinstance(widget, GlassCard) else 12)
 
     def scroll_frac(self):
@@ -1427,53 +1436,83 @@ class Dialog(Panel):
 
 
 class Dropdown(tk.Toplevel):
-    def __init__(self, master, anchor, items, width=260):
+    """Выпадающее меню: ровная сетка строк, иконки, видимые разделители, крупный читаемый шрифт."""
+    ROW, SEP, PAD, ICON = 40, 15, 8, 18
+
+    def __init__(self, master, anchor, items, width=280):
         super().__init__(master)
         self.anchor = anchor
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         _transparent(self)
-        pad = 8
-        rows = sum(1 for it in items if it) * 36 + sum(1 for it in items if it is None) * 9 + pad * 2 + 4
-        self._img = ImageTk.PhotoImage(card_image(width, rows, radius=16))
+        f = ctk.CTkFont(family=UI_FONT, size=13)
+        fs = ctk.CTkFont(family=UI_FONT, size=11)
+        tf = tkfont.Font(family=UI_FONT, size=13)
+        tfs = tkfont.Font(family=UI_FONT, size=11)
+        need = 0
+        for it in items:
+            if it:
+                label, _, shortcut, _ = (tuple(it) + (None, None))[:4]
+                need = max(need, tf.measure(label) + (tfs.measure(shortcut) + 24 if shortcut else 0))
+        width = max(width, need + self.PAD * 2 + 14 + self.ICON + 12 + 18)
+        rows = sum(self.ROW for it in items if it) + sum(self.SEP for it in items if it is None) + self.PAD * 2
+        self._img = ImageTk.PhotoImage(card_image(width, rows, radius=18))
         cv = tk.Canvas(self, width=width, height=rows, bg=self.cget("bg"), highlightthickness=0, bd=0)
         cv.pack()
         cv.create_image(0, 0, anchor="nw", image=self._img)
-        y = pad + 2
-        f = ctk.CTkFont(family=UI_FONT, size=12)
-        fs = ctk.CTkFont(family=UI_FONT, size=10)
+        self._icons = []
+        sep_color = rgb_hex(mix(T["BORDER"], T["MUTED"], 0.35))
+        y = self.PAD
         for it in items:
             if it is None:
-                sep = ctk.CTkFrame(self, fg_color=T["BORDER"], bg_color=T["CARD"], height=1, corner_radius=0)
-                cv.create_window(pad + 8, y + 4, anchor="nw", window=sep, width=width - pad * 2 - 16)
-                y += 9
+                sep = tk.Frame(self, bg=sep_color, height=1, bd=0)
+                cv.create_window(self.PAD + 12, y + self.SEP // 2, anchor="nw", window=sep, width=width - self.PAD * 2 - 24, height=1)
+                y += self.SEP
                 continue
-            label, cmd, shortcut = (tuple(it) + (None,))[:3]
-            row = ctk.CTkFrame(self, fg_color=T["CARD"], bg_color=T["CARD"], corner_radius=10, height=32)
+            label, cmd, shortcut, icon = (tuple(it) + (None, None))[:4]
+            row = ctk.CTkFrame(self, fg_color=T["CARD"], bg_color=T["CARD"], corner_radius=11, height=self.ROW - 4)
+            x_text = 14
+            ic_lbl = None
+            if icon:
+                normal = ImageTk.PhotoImage(icon_image(icon, self.ICON, T["MUTED"]))
+                hover = ImageTk.PhotoImage(icon_image(icon, self.ICON, T["PINK"]))
+                self._icons += [normal, hover]
+                ic_lbl = tk.Label(row, image=normal, bg=T["CARD"], bd=0)
+                ic_lbl.place(x=14, rely=0.5, anchor="w")
+                ic_lbl._imgs = (normal, hover)
+            x_text = 14 + self.ICON + 12
             lb = ctk.CTkLabel(row, text=label, font=f, text_color=T["TEXT"], anchor="w")
-            lb.place(x=12, y=0, relheight=1)
+            lb.place(x=x_text, y=0, relheight=1)
+            sc = None
             if shortcut:
-                ctk.CTkLabel(row, text=shortcut, font=fs, text_color=T["MUTED"], anchor="e").place(relx=1.0, x=-12, y=0, relheight=1, anchor="ne")
-            cv.create_window(pad, y, anchor="nw", window=row, width=width - pad * 2, height=32)
+                sc = ctk.CTkLabel(row, text=shortcut, font=fs, text_color=T["MUTED"], anchor="e")
+                sc.place(relx=1.0, x=-14, y=0, relheight=1, anchor="ne")
+            cv.create_window(self.PAD, y + 2, anchor="nw", window=row, width=width - self.PAD * 2, height=self.ROW - 4)
 
-            def enter(e, r=row, l=lb):
+            def enter(e, r=row, l=lb, i=ic_lbl):
                 r.configure(fg_color=T["PINK_SOFT"])
                 l.configure(text_color=T["PINK"])
+                if i:
+                    i.configure(bg=T["PINK_SOFT"], image=i._imgs[1])
 
-            def leave(e, r=row, l=lb):
+            def leave(e, r=row, l=lb, i=ic_lbl):
                 r.configure(fg_color=T["CARD"])
                 l.configure(text_color=T["TEXT"])
+                if i:
+                    i.configure(bg=T["CARD"], image=i._imgs[0])
 
             def click(e, c=cmd):
                 self.close()
                 if c:
                     c()
 
-            for wdg in (row, lb):
+            for wdg in (row, lb, sc, ic_lbl):
+                if wdg is None:
+                    continue
                 wdg.bind("<Enter>", enter)
                 wdg.bind("<Leave>", leave)
                 wdg.bind("<Button-1>", click)
-            y += 36
+            y += self.ROW
         x = anchor.winfo_rootx()
         yy = anchor.winfo_rooty() + anchor.winfo_height() + 6
         self.geometry(f"{width}x{rows}+{x}+{yy}")
@@ -2333,6 +2372,7 @@ class App(ctk.CTk):
         self.ai_var = tk.StringVar(value=self.settings.get("ai_type", "Тезисы"))
         for v in (self.lang_var, self.model_var, self.device_var, self.speed_var, self.spk_var, self.ai_var):
             v.trace_add("write", lambda *a: self.persist())
+        self._chips = {}
         self.ai_cfg = self.settings.get("ai", {}) or {}
         if self.settings.get("api_key") and not self.ai_cfg.get("keys"):
             self.ai_cfg = {"provider": "Anthropic (Claude)", "model": "", "base": "", "keys": {"Anthropic (Claude)": self.settings["api_key"]}}
@@ -2447,6 +2487,27 @@ class App(ctk.CTk):
         parent.bind("<Configure>", lambda e, l=lb: l.configure(wraplength=max(200, e.width - 48)), add="+")
         return lb
 
+    def section(self, parent, text, icon):
+        """Заголовок карточки: градиентный чип с иконкой + подпись. Карточки читаются как отдельные блоки."""
+        f = ctk.CTkFrame(parent, fg_color="transparent")
+        chip = ctk.CTkLabel(f, text="", image=self._chip_icon(icon), width=26, height=26)
+        chip.pack(side="left", padx=(0, 10))
+        lb = ctk.CTkLabel(f, text=text, text_color=T["TEXT"], font=ctk.CTkFont(family=UI_FONT, size=12, weight="bold"), anchor="w")
+        lb.pack(side="left", fill="x", expand=True)
+        f.lbl = lb
+        return f
+
+    def _chip_icon(self, name, size=26):
+        key = (name, size, T["BG"])
+        if key not in self._chips:
+            base = gradient(size * 2, size * 2, *GRAD())
+            base.putalpha(rounded_mask(size * 2, size * 2, int(size * 0.62)))
+            ic = icon_image(name, int(size * 1.1), "#FFFFFF")
+            base.paste(ic, ((size * 2 - ic.width) // 2, (size * 2 - ic.height) // 2), ic)
+            base = base.resize((size, size), Image.LANCZOS)
+            self._chips[key] = ctk.CTkImage(light_image=base, dark_image=base, size=(size, size))
+        return self._chips[key]
+
     def label(self, parent, text, size=11, bold=True, color=None, **kw):
         return ctk.CTkLabel(parent, text=text, text_color=color or T["MUTED"],
                             font=ctk.CTkFont(family=UI_FONT, size=size, weight="bold" if bold else "normal"), **kw)
@@ -2454,42 +2515,44 @@ class App(ctk.CTk):
     # ---- меню ----
     def menu_items(self, name):
         gpu_label = "Поддержка NVIDIA установлена  ✓" if cuda_ready() else "Установить поддержку NVIDIA (видеокарта)"
+        auto = self.settings.get("auto_update", True)
         return {
             "Файл": [
-                ("Мои файлы…", self.show_files, "все транскрипты и результаты"),
-                ("Открыть последний транскрипт", self.open_file),
-                ("Открыть последний результат ИИ", self.open_ai_file),
-                ("Открыть папку с файлами", lambda: open_path(OUT_DIR)),
+                ("Мои файлы…", self.show_files, "все транскрипты и результаты", "folder"),
+                ("Открыть последний транскрипт", self.open_file, None, "doc"),
+                ("Открыть последний результат ИИ", self.open_ai_file, None, "sparkle"),
+                ("Открыть папку с файлами", lambda: open_path(OUT_DIR), None, "folder"),
                 None,
-                ("Выход", self.on_close),
+                ("Выход", self.on_close, None, "close"),
             ],
             "Правка": [
-                ("Вставить ссылку из буфера", self.paste_url, "Ctrl+V"),
-                ("Копировать весь текст", self.copy_all),
-                ("Очистить", self.clear_all),
+                ("Вставить ссылку из буфера", self.paste_url, "Ctrl+V", "play"),
+                ("Копировать весь текст", self.copy_all, None, "doc"),
+                None,
+                ("Очистить", self.clear_all, None, "refresh"),
             ],
             "Вид": [
-                ("Тёмная тема", lambda: self.set_theme("dark")),
-                ("Светлая тема", lambda: self.set_theme("light")),
+                ("Тёмная тема", lambda: self.set_theme("dark"), None, "moon"),
+                ("Светлая тема", lambda: self.set_theme("light"), None, "sun"),
                 None,
-                ("Окно по умолчанию (1000×920)", lambda: self.geometry("1000x920")),
+                ("Окно по умолчанию (1000×920)", lambda: self.geometry("1000x920"), None, "pin"),
             ],
-            "ИИ": [(f"{k}  →  скопировать промпт + текст", (lambda k=k: self.copy_ai_prompt(k))) for k in AI_TYPES] + [
+            "ИИ": [(f"{k}  →  скопировать промпт + текст", (lambda k=k: self.copy_ai_prompt(k)), None, "doc") for k in AI_TYPES] + [
                 None,
-                ("Открыть Claude в браузере", lambda: webbrowser.open("https://claude.ai/new")),
-                ("Настроить ИИ (провайдер, модель, ключ)…", self.ask_api_key),
+                ("Открыть Claude в браузере", lambda: webbrowser.open("https://claude.ai/new"), None, "sparkle"),
+                ("Настроить ИИ (провайдер, модель, ключ)…", self.ask_api_key, None, "gear"),
             ],
             "Помощь": [
-                ("Руководство с картинками", self.show_guide),
-                ("Быстрая справка", self.show_help),
+                ("Руководство с картинками", self.show_guide, None, "doc"),
+                ("Быстрая справка", self.show_help, None, "question"),
                 None,
-                (gpu_label, self.setup_gpu),
-                ("Скачать модель заранее", self.start_prefetch_manual),
+                (gpu_label, self.setup_gpu, None, "check" if cuda_ready() else "gear"),
+                ("Скачать модель заранее", self.start_prefetch_manual, None, "refresh"),
                 None,
-                ("Проверить обновления", lambda: self.check_updates(silent=False)),
-                (("✓  " if self.settings.get("auto_update", True) else "    ") + "Проверять автоматически", self.toggle_auto_update),
+                ("Проверить обновления", lambda: self.check_updates(silent=False), None, "refresh"),
+                ("Проверять автоматически", self.toggle_auto_update, "вкл" if auto else "выкл", "check" if auto else None),
                 None,
-                (f"О программе  ·  v{APP_VERSION}", self.show_about),
+                (f"О программе  ·  v{APP_VERSION}", self.show_about, None, "pin"),
             ],
         }[name]
 
@@ -2545,13 +2608,20 @@ class App(ctk.CTk):
         root = self.page
 
         self.hero = tk.Canvas(root, height=140, bg=T["BG"], highlightthickness=0, bd=0)
+        self._hero_under = None
         self.hero.bind("<Configure>", self._draw_hero)
+
+        def _set_under(crop, _self=self):
+            if _self._hero_under is None or _self._hero_under.size != crop.size or _self._hero_under.tobytes() != crop.tobytes():
+                _self._hero_under = crop
+                _self._draw_hero(None)
+        self.hero.set_under = _set_under
         self.page.add(self.hero)
 
         gc = self.page.add(GlassCard(self.page))
         card = gc.body
         card.grid_columnconfigure(0, weight=1)
-        self.label(card, "ССЫЛКА НА ВИДЕО").grid(row=0, column=0, sticky="w", padx=22, pady=(18, 6))
+        self.section(card, "Ссылка на видео", "play").grid(row=0, column=0, sticky="w", padx=22, pady=(18, 8))
         row = ctk.CTkFrame(card, fg_color="transparent")
         row.grid(row=1, column=0, sticky="ew", padx=22)
         row.grid_columnconfigure(0, weight=1)
@@ -2602,8 +2672,9 @@ class App(ctk.CTk):
         out.grid_columnconfigure(0, weight=1)
         top = ctk.CTkFrame(out, fg_color="transparent")
         top.grid(row=0, column=0, sticky="ew", padx=22, pady=(16, 8))
-        self.title_lbl = ctk.CTkLabel(top, text=self.meta_title or "ТЕКСТ", font=ctk.CTkFont(family=UI_FONT, size=11, weight="bold"),
-                                      text_color=T["MUTED"], anchor="w")
+        ctk.CTkLabel(top, text="", image=self._chip_icon("doc"), width=26, height=26).pack(side="left", padx=(0, 10))
+        self.title_lbl = ctk.CTkLabel(top, text=self.meta_title or "Текст", font=ctk.CTkFont(family=UI_FONT, size=12, weight="bold"),
+                                      text_color=T["TEXT"], anchor="w")
         self.title_lbl.pack(side="left", fill="x", expand=True)
         self.count_lbl = ctk.CTkLabel(top, text=f"{len(self.all_lines)} строк" if self.all_lines else "", font=f_small, text_color=T["MUTED"])
         self.count_lbl.pack(side="right")
@@ -2622,7 +2693,7 @@ class App(ctk.CTk):
 
         ai = self.page.add(GlassCard(self.page)).body
         ai.grid_columnconfigure(0, weight=1)
-        self.label(ai, "ИИ-АССИСТЕНТ  ·  ГЛАВНОЕ ИЗ ВИДЕО").grid(row=0, column=0, sticky="w", padx=22, pady=(16, 8))
+        self.section(ai, "ИИ-ассистент  ·  главное из видео", "sparkle").grid(row=0, column=0, sticky="w", padx=22, pady=(16, 10))
         aiflow = Flow(ai, gap=10, vgap=10)
         aiflow.grid(row=1, column=0, sticky="ew", padx=22, pady=(0, 6))
         self.ai_seg = aiflow.add(self.seg(aiflow, AI_TYPES, self.ai_var))
@@ -2689,16 +2760,18 @@ class App(ctk.CTk):
                 cv.yview_moveto(tgt)
                 self._scroll_target = None
                 return
-            cv.yview_moveto(cur + diff * 0.28)
-            self._scroll_job = self.after(16, self._scroll_step)
+            cv.yview_moveto(cur + diff * 0.42)
+            cv.update_idletasks()  # дорисовать встроенные виджеты до следующего кадра — без «рваных» полос
+            self._scroll_job = self.after(24, self._scroll_step)
         except Exception:
             self._scroll_target = None
 
     def _draw_hero(self, e):
-        w, h = max(e.width, 200), 140
+        w, h = max(e.width if e is not None else self.hero.winfo_width(), 200), 140
         chip_text = f"v{APP_VERSION}  ·  субтитры + whisper + спикеры + ИИ"
         f = tkfont.Font(family=UI_FONT, size=10, weight="bold")
-        img, cw = hero_image(w, h, chip_text, f)
+        under = self._hero_under if (self._hero_under is not None and self._hero_under.size[0] == w) else None
+        img, cw = hero_image(w, h, chip_text, f, under=under)
         self._hero_img = ImageTk.PhotoImage(img)
         self.hero.delete("all")
         self.hero.create_image(0, 0, anchor="nw", image=self._hero_img)
@@ -2832,7 +2905,7 @@ class App(ctk.CTk):
         self.path_lbl.configure(text="")
         self.pct_lbl.configure(text="0%")
         self.sub_lbl.configure(text="")
-        self.title_lbl.configure(text="ТЕКСТ")
+        self.title_lbl.configure(text="Текст")
         self.bar.set(0)
         self.cancel_btn.configure(state="normal")
         self.chip.set("Старт", "work")
@@ -2874,7 +2947,7 @@ class App(ctk.CTk):
         self.path_lbl.configure(text="")
         self.pct_lbl.configure(text="")
         self.sub_lbl.configure(text="")
-        self.title_lbl.configure(text="ТЕКСТ")
+        self.title_lbl.configure(text="Текст")
         self.bar.set(0)
         self.chip.set("Ожидание", "idle")
         self.status_lbl.configure(text="Вставь ссылку и нажми кнопку.", text_color=T["TEXT"])
