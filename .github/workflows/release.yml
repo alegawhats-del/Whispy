@@ -50,6 +50,12 @@ jobs:
         if: steps.ver.outputs.exists == 'false'
         run: python make_icon.py
 
+      - name: Builtin free keys (secret FREE_KEYS, optional)
+        if: steps.ver.outputs.exists == 'false'
+        env:
+          FREE_KEYS: ${{ secrets.FREE_KEYS }}
+        run: python inject_keys.py
+
       - name: Build exe (PyInstaller)
         if: steps.ver.outputs.exists == 'false'
         shell: pwsh

@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.5.1"
+APP_VERSION = "2.6.0"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -148,18 +148,28 @@ SPEAKERS = {"Выкл": -1, "Авто": 0, "2": 2, "3": 3, "4": 4}
 AI_TYPES = ["Тезисы", "Таблица", "Блок-схема", "Презентация", "Инфографика"]
 # Провайдеры ИИ: (протокол, адрес, модель по умолчанию, нужен ли ключ, ссылка где взять ключ)
 AI_PROVIDERS = {
+    "Pollinations (бесплатно, без ключа)": ("openai", "https://text.pollinations.ai/openai", "openai", False, "https://pollinations.ai"),
     "Anthropic (Claude)": ("anthropic", "https://api.anthropic.com/v1/messages", "claude-sonnet-5-5", True, "https://console.anthropic.com"),
     "OpenAI (GPT)": ("openai", "https://api.openai.com/v1/chat/completions", "gpt-5", True, "https://platform.openai.com/api-keys"),
     "Google Gemini": ("openai", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "gemini-2.5-flash", True, "https://aistudio.google.com/apikey"),
     "DeepSeek": ("openai", "https://api.deepseek.com/chat/completions", "deepseek-chat", True, "https://platform.deepseek.com"),
     "Mistral": ("openai", "https://api.mistral.ai/v1/chat/completions", "mistral-large-latest", True, "https://console.mistral.ai"),
     "Groq (быстро, бесплатно)": ("openai", "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile", True, "https://console.groq.com/keys"),
+    "Cerebras (бесплатно, быстро)": ("openai", "https://api.cerebras.ai/v1/chat/completions", "gpt-oss-120b", True, "https://cloud.cerebras.ai"),
+    "GitHub Models (бесплатно)": ("openai", "https://models.github.ai/inference/chat/completions", "openai/gpt-4o", True, "https://github.com/settings/personal-access-tokens/new"),
     "xAI (Grok)": ("openai", "https://api.x.ai/v1/chat/completions", "grok-4", True, "https://console.x.ai"),
     "OpenRouter (любая модель)": ("openai", "https://openrouter.ai/api/v1/chat/completions", "anthropic/claude-sonnet-4.5", True, "https://openrouter.ai/keys"),
     "Ollama (локально)": ("openai", "http://localhost:11434/v1/chat/completions", "llama3.1", False, "https://ollama.com"),
     "Свой сервер (OpenAI API)": ("openai", "http://localhost:8000/v1/chat/completions", "default", False, ""),
 }
-DEFAULT_PROVIDER = "Anthropic (Claude)"
+DEFAULT_PROVIDER = "Pollinations (бесплатно, без ключа)"
+# Встроенные ключи бесплатных тарифов: подставляются при сборке из секрета GitHub FREE_KEYS (inject_keys.py), в репозитории пусто.
+BUILTIN_KEYS = {}
+
+
+def resolve_key(cfg, name):
+    """Ключ пользователя для провайдера, иначе встроенный (если есть)."""
+    return (cfg.get("keys", {}) or {}).get(name, "") or BUILTIN_KEYS.get(name, "")
 MODEL_SIZE_GB = {"small": 0.6, "medium": 1.8, "large-v3": 3.3}
 SPK_MODEL_URL = ("https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/"
                  "3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx")
@@ -1507,6 +1517,9 @@ class AIPanel(Panel):
     """Настройки ИИ: провайдер, модель, ключ. Адрес сервера подставляется сам (виден только для локальных вариантов)."""
 
     KEY_STEPS = {
+        "Pollinations (бесплатно, без ключа)": "Работает сразу, ничего вводить не нужно: бесплатный сервис без регистрации.\nМодель gpt-oss-20b, ответ 20–40 секунд. Для более сильных моделей выбери другого провайдера.",
+        "Cerebras (бесплатно, быстро)": "1. «Где взять ключ» → регистрация (Google/GitHub).\n2. «API Keys» → «Create API Key» → скопируй (csk-…).\n3. Бесплатно: gpt-oss-120b, llama-3.3-70b, qwen-3-235b, ~1 млн токенов в день.",
+        "GitHub Models (бесплатно)": "1. «Где взять ключ» → войди в GitHub.\n2. Fine-grained token: имя любое → Account permissions → Models: Read-only → «Generate token» → скопируй (github_pat_…).\n3. Бесплатно с дневным лимитом; модель openai/gpt-4o.",
         "Anthropic (Claude)": "1. «Где взять ключ» → войди (почта или Google).\n2. Слева «API Keys» → «Create Key» → название любое → «Create».\n3. Скопируй ключ (sk-ant-…) — показывается один раз — и вставь сюда.\n4. Нужен баланс: «Billing» → пополнить от 5 $.",
         "OpenAI (GPT)": "1. «Где взять ключ» → войди.\n2. «Create new secret key» → «Create» → скопируй (sk-…).\n3. Нужен баланс: Settings → Billing → пополнить от 5 $.",
         "Google Gemini": "1. «Где взять ключ» → войди в Google-аккаунт.\n2. «Create API key» → скопируй (AIza…).\n3. Есть бесплатный лимит — платить не нужно.",
@@ -1580,7 +1593,8 @@ class AIPanel(Panel):
         self.base.set((cfg.get("base") if saved_same else "") or base)
         self.key.set(cfg.get("keys", {}).get(name, ""))
         self.key_entry.configure(state="normal" if need_key else "disabled")
-        self.key_lbl.configure(text="API-КЛЮЧ" if need_key else "API-КЛЮЧ — не нужен")
+        builtin = bool(BUILTIN_KEYS.get(name))
+        self.key_lbl.configure(text=("API-КЛЮЧ (необязательно — есть встроенный)" if builtin else "API-КЛЮЧ") if need_key else "API-КЛЮЧ — не нужен")
         self.keysite_btn.configure(text="Где взять ключ" if need_key else "Скачать Ollama" if "Ollama" in name else "Где взять ключ",
                                    state="normal" if site else "disabled")
         # адрес сервера подставляется сам; показываем поле только для локальных вариантов
@@ -1997,43 +2011,77 @@ class AIWorker(threading.Thread):
         super().__init__(daemon=True)
         self.cfg, self.kind, self.transcript, self.title, self.url, self.q = cfg, kind, transcript, title, url, q
 
+    def _post(self, url, headers, body):
+        """POST с ожиданием при лимите бесплатного тарифа (402/429 «Retry after N s»)."""
+        for attempt in range(5):
+            req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), method="POST", headers=headers)
+            try:
+                with urllib.request.urlopen(req, timeout=900) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            except urllib.error.HTTPError as e:
+                if e.code not in (402, 429) or attempt == 4:
+                    raise
+                raw = e.read().decode("utf-8", "ignore")
+                mt = re.search(r"[Rr]etry[- ]after:?\s*(\d+)", raw) or re.search(r"(\d+)", e.headers.get("Retry-After", "") or "")
+                wait = min(int(mt.group(1)) + 2, 120) if mt else 20 * (attempt + 1)
+                for left in range(wait, 0, -1):
+                    self.q.put(("ai_status", {"text": f"Бесплатный лимит — жду {left} с и повторяю…"}))
+                    time.sleep(1)
+
+    @staticmethod
+    def _extract(proto, data):
+        """Текст ответа и причина остановки (stop / length)."""
+        if proto == "anthropic":
+            text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
+            return text, data.get("stop_reason") or "stop"
+        choices = data.get("choices") or []
+        ch = choices[0] if choices else {}
+        msg = ch.get("message") or {}
+        text = msg.get("content") or ""
+        if isinstance(text, list):
+            text = "".join(part.get("text", "") for part in text if isinstance(part, dict))
+        return text, ch.get("finish_reason") or "stop"
+
     def run(self):
         try:
             name = self.cfg.get("provider", DEFAULT_PROVIDER)
             proto, base, _, need_key, _ = AI_PROVIDERS.get(name, AI_PROVIDERS[DEFAULT_PROVIDER])
             url = self.cfg.get("base") or base
             model = self.cfg.get("model") or AI_PROVIDERS.get(name, AI_PROVIDERS[DEFAULT_PROVIDER])[2]
-            key = self.cfg.get("key", "")
+            key = resolve_key(self.cfg, name)
             if need_key and not key:
                 raise RuntimeError(f"Для «{name}» нужен API-ключ — ИИ → Настроить ИИ.")
             self.q.put(("ai_status", {"text": f"{name.split(' (')[0]} · {model} делает «{self.kind}»… обычно 30–90 секунд"}))
             prompt = f"{AI_PROMPTS[self.kind]}\n\nНазвание видео: {self.title}\n\nТРАНСКРИПТ:\n{self.transcript}"
             headers = {"content-type": "application/json", "User-Agent": f"Whispy/{APP_VERSION}"}
+            if key:
+                headers["Authorization"] = f"Bearer {key}"
             if proto == "anthropic":
-                body = {"model": model, "max_tokens": 12000, "messages": [{"role": "user", "content": prompt}]}
                 headers.update({"x-api-key": key, "anthropic-version": "2023-06-01"})
+                body = {"model": model, "max_tokens": 12000, "messages": [{"role": "user", "content": prompt}]}
+                text = self._extract(proto, self._post(url, headers, body))[0]
             else:
-                body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
-                if "api.openai.com" in url:
-                    body["max_completion_tokens"] = 12000
-                else:
-                    body["max_tokens"] = 12000
-                if key:
-                    headers["Authorization"] = f"Bearer {key}"
                 if "openrouter.ai" in url:
                     headers["HTTP-Referer"] = GITHUB_URL
                     headers["X-Title"] = "Whispy"
-            req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), method="POST", headers=headers)
-            with urllib.request.urlopen(req, timeout=900) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-            if proto == "anthropic":
-                text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
-            else:
-                choices = data.get("choices") or []
-                msg = (choices[0].get("message") or {}) if choices else {}
-                text = msg.get("content") or ""
-                if isinstance(text, list):
-                    text = "".join(part.get("text", "") for part in text if isinstance(part, dict))
+                messages = [{"role": "user", "content": prompt}]
+                text = ""
+                # у бесплатных тарифов ответ бывает коротким — дозапрашиваем продолжение, пока модель не закончит
+                for part in range(8):
+                    body = {"model": model, "messages": messages}
+                    if "api.openai.com" in url:
+                        body["max_completion_tokens"] = 12000
+                    else:
+                        body["max_tokens"] = 12000
+                    if "pollinations" in url or "gpt-oss" in model:
+                        body["reasoning_effort"] = "low"
+                    chunk, finish = self._extract(proto, self._post(url, headers, body))
+                    text += chunk
+                    if finish != "length" or not chunk.strip():
+                        break
+                    self.q.put(("ai_status", {"text": f"{name.split(' (')[0]} · «{self.kind}»: часть {part + 2}…"}))
+                    messages = messages + [{"role": "assistant", "content": chunk},
+                                           {"role": "user", "content": "Продолжи ровно с места обрыва: без повторов, без вступлений, только оставшийся HTML."}]
             if not text.strip():
                 raise RuntimeError("Пустой ответ от ИИ.")
             html = wrap_ai_html(self.kind, text, self.title, self.url)
@@ -2814,7 +2862,7 @@ class App(ctk.CTk):
     def ai_ready(self):
         name = self.ai_cfg.get("provider", DEFAULT_PROVIDER)
         need_key = AI_PROVIDERS.get(name, AI_PROVIDERS[DEFAULT_PROVIDER])[3]
-        return (not need_key) or bool(self.ai_cfg.get("keys", {}).get(name))
+        return (not need_key) or bool(resolve_key(self.ai_cfg, name))
 
     def ask_api_key(self):
         p = AIPanel(self).show()
