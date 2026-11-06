@@ -1,6 +1,6 @@
 {
-  "version": "2.6.0",
+  "version": "2.6.1",
   "date": "2026-11-06",
-  "notes": "• ИИ работает сразу после установки без ключа: провайдер Pollinations (бесплатно, без регистрации) по умолчанию\n• Новые бесплатные провайдеры: Cerebras, GitHub Models; длинные ответы собираются из нескольких частей автоматически\n• Исправлено: ключ провайдера не подхватывался при запросе через API",
-  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.6.0/Whispy-Setup-2.6.0.exe"
+  "notes": "• Новые бесплатные провайдеры: NVIDIA NIM, Ollama Cloud, Z.AI GLM — с пошаговыми подсказками, где взять ключ",
+  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.6.1/Whispy-Setup-2.6.1.exe"
 }
