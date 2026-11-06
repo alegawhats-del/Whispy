@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.7.0"
+APP_VERSION = "2.7.1"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
