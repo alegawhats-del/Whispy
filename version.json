@@ -1,6 +1,6 @@
 {
-  "version": "2.7.0",
+  "version": "2.7.1",
   "date": "2026-11-06",
-  "notes": "• В окне «Настроить ИИ» и под блоком ИИ: качество провайдера, для каких задач он лучше, лимит и счётчик запросов (сегодня / всего)\n• Если ключ зашит в сборку — Gemini выбирается сам; при исчерпании лимита приложение автоматически переключается на следующий бесплатный провайдер",
-  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.7.0/Whispy-Setup-2.7.0.exe"
+  "notes": "• Сборка со встроенными бесплатными ключами: Gemini, NVIDIA NIM, Ollama Cloud, Z.AI, Groq — ИИ работает сразу, Gemini по умолчанию",
+  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.7.1/Whispy-Setup-2.7.1.exe"
 }
