@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.6.0"
+APP_VERSION = "2.6.1"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -155,6 +155,9 @@ AI_PROVIDERS = {
     "DeepSeek": ("openai", "https://api.deepseek.com/chat/completions", "deepseek-chat", True, "https://platform.deepseek.com"),
     "Mistral": ("openai", "https://api.mistral.ai/v1/chat/completions", "mistral-large-latest", True, "https://console.mistral.ai"),
     "Groq (быстро, бесплатно)": ("openai", "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile", True, "https://console.groq.com/keys"),
+    "NVIDIA NIM (бесплатно)": ("openai", "https://integrate.api.nvidia.com/v1/chat/completions", "meta/llama-3.3-70b-instruct", True, "https://build.nvidia.com"),
+    "Ollama Cloud (бесплатно)": ("openai", "https://ollama.com/v1/chat/completions", "gpt-oss:120b", True, "https://ollama.com/settings/keys"),
+    "Z.AI GLM (бесплатно)": ("openai", "https://api.z.ai/api/paas/v4/chat/completions", "glm-4.5-flash", True, "https://z.ai/manage-apikey/apikey-list"),
     "Cerebras (бесплатно, быстро)": ("openai", "https://api.cerebras.ai/v1/chat/completions", "gpt-oss-120b", True, "https://cloud.cerebras.ai"),
     "GitHub Models (бесплатно)": ("openai", "https://models.github.ai/inference/chat/completions", "openai/gpt-4o", True, "https://github.com/settings/personal-access-tokens/new"),
     "xAI (Grok)": ("openai", "https://api.x.ai/v1/chat/completions", "grok-4", True, "https://console.x.ai"),
@@ -1518,6 +1521,9 @@ class AIPanel(Panel):
 
     KEY_STEPS = {
         "Pollinations (бесплатно, без ключа)": "Работает сразу, ничего вводить не нужно: бесплатный сервис без регистрации.\nМодель gpt-oss-20b, ответ 20–40 секунд. Для более сильных моделей выбери другого провайдера.",
+        "NVIDIA NIM (бесплатно)": "1. «Где взять ключ» → войди (почта, без карты).\n2. Открой любую модель → «Get API Key» → «Generate Key» → скопируй (nvapi-…).\n3. Бесплатно, 40 запросов/мин. Сильные модели: meta/llama-3.3-70b-instruct, deepseek-ai/deepseek-v3.1, qwen/qwen3-235b-a22b.",
+        "Ollama Cloud (бесплатно)": "1. «Где взять ключ» → войди (Google/GitHub).\n2. «Add key» / «Create key» → скопируй.\n3. Бесплатный тариф с дневным лимитом. Модели: gpt-oss:120b, deepseek-v3.1:671b, qwen3-coder:480b.",
+        "Z.AI GLM (бесплатно)": "1. «Где взять ключ» → регистрация (почта).\n2. «Create API Key» → скопируй.\n3. Модель glm-4.5-flash бесплатна без лимита по токенам.",
         "Cerebras (бесплатно, быстро)": "1. «Где взять ключ» → регистрация (Google/GitHub).\n2. «API Keys» → «Create API Key» → скопируй (csk-…).\n3. Бесплатно: gpt-oss-120b, llama-3.3-70b, qwen-3-235b, ~1 млн токенов в день.",
         "GitHub Models (бесплатно)": "1. «Где взять ключ» → войди в GitHub.\n2. Fine-grained token: имя любое → Account permissions → Models: Read-only → «Generate token» → скопируй (github_pat_…).\n3. Бесплатно с дневным лимитом; модель openai/gpt-4o.",
         "Anthropic (Claude)": "1. «Где взять ключ» → войди (почта или Google).\n2. Слева «API Keys» → «Create Key» → название любое → «Create».\n3. Скопируй ключ (sk-ant-…) — показывается один раз — и вставь сюда.\n4. Нужен баланс: «Billing» → пополнить от 5 $.",
