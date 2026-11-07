@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.8.2"
+APP_VERSION = "2.8.3"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -2616,6 +2616,7 @@ class App(ctk.CTk):
             self.ai_cfg = {"provider": "Anthropic (Claude)", "model": "", "base": "", "keys": {"Anthropic (Claude)": self.settings["api_key"]}}
         if not self.ai_cfg.get("provider") and best_builtin_provider():
             self.ai_cfg["provider"] = best_builtin_provider()
+        self.ensure_ready_provider()
 
         self.build()
         self.bind_all("<Control-KeyPress>", self._hotkeys, add="+")
@@ -3315,7 +3316,7 @@ class App(ctk.CTk):
         self.ai_var.set(kind)
         self.clipboard_clear()
         self.clipboard_append(self.ai_payload(kind))
-        self.toast(f"Промпт «{kind}» + текст скопированы — вставь в Claude  ✓")
+        self.toast(f"Промпт «{kind}» + текст скопированы — вставь в чат ИИ  ✓")
 
     def ai_ready(self):
         name = self.ai_cfg.get("provider", DEFAULT_PROVIDER)
@@ -3338,16 +3339,30 @@ class App(ctk.CTk):
         url = AI_CHAT.get(self.ai_cfg.get("provider", DEFAULT_PROVIDER), ("", ""))[1] or "https://claude.ai/new"
         webbrowser.open(url)
 
+    ADD_ITEM = "＋  Добавить ИИ…"
+
     def ready_providers(self):
-        """В блоке показываем только тех, кто готов к работе (есть ключ или ключ не нужен); остальные — в «Настроить ИИ»."""
-        lst = [n for n in AI_PROVIDERS if key_state(self.ai_cfg, n)]
+        """В блоке — только подключённые: со своим или встроенным ключом, плюс Pollinations (ключ не нужен).
+        «Ollama (локально)» и «Свой сервер» показываются, только если выбраны в настройках."""
         cur = self.ai_cfg.get("provider", DEFAULT_PROVIDER)
-        if cur not in lst:
-            lst.insert(0, cur)
-        return lst
+        lst = [n for n in AI_PROVIDERS if key_state(self.ai_cfg, n) in ("own", "builtin") or n == DEFAULT_PROVIDER]
+        if cur not in lst and key_state(self.ai_cfg, cur) == "free":
+            lst.append(cur)
+        return lst + [self.ADD_ITEM]
+
+    def ensure_ready_provider(self):
+        """Текущий провайдер без ключа — переключаемся на первый подключённый."""
+        if not self.ai_ready():
+            self.ai_cfg["provider"] = best_builtin_provider() or next(
+                (n for n in AI_PROVIDERS if key_state(self.ai_cfg, n) == "own"), DEFAULT_PROVIDER)
+            self.ai_cfg["model"], self.ai_cfg["base"] = "", ""
 
     def pick_provider(self, name):
-        """Смена ИИ прямо из блока: без ключа — сразу открываем настройку."""
+        """Смена ИИ прямо из блока; «Добавить ИИ…» открывает настройки."""
+        if name == self.ADD_ITEM:
+            self.refresh_ai_hint()
+            self.ask_api_key()
+            return
         self.ai_cfg["provider"], self.ai_cfg["model"], self.ai_cfg["base"] = name, "", ""
         self.persist()
         self.refresh_ai_hint()
