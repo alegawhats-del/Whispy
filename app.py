@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.8.1"
+APP_VERSION = "2.8.2"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -1411,6 +1411,11 @@ class CustomFrame:
             self._old = self.u32.SetWindowLongPtrW(self.hwnd, -4, ctypes.cast(self._proc, ctypes.c_void_p).value)
             if not self._old:
                 return
+            # внутреннее окно Tk принимает клики первым: над панелью и краями оно отвечает «прозрачно» (HTTRANSPARENT),
+            # и Windows отдаёт клик рамке — отсюда родное перетаскивание, прилипание и растягивание
+            self.child = app.winfo_id()
+            self._cproc = self.PROC(self._childproc)
+            self._cold = self.u32.SetWindowLongPtrW(self.child, -4, ctypes.cast(self._cproc, ctypes.c_void_p).value)
             self.u32.SetWindowPos(self.hwnd, None, 0, 0, 0, 0, 0x0020 | 0x0002 | 0x0001 | 0x0004)  # FRAMECHANGED|NOMOVE|NOSIZE|NOZORDER
             self.ok = True
         except Exception:
@@ -1419,11 +1424,60 @@ class CustomFrame:
     def restore_native(self):
         if self.ok:
             try:
+                if getattr(self, "_cold", 0):
+                    self.u32.SetWindowLongPtrW(self.child, -4, self._cold)
                 self.u32.SetWindowLongPtrW(self.hwnd, -4, self._old)
                 self.u32.SetWindowPos(self.hwnd, None, 0, 0, 0, 0, 0x0020 | 0x0002 | 0x0001 | 0x0004)
             except Exception:
                 pass
             self.ok = False
+
+    def _childproc(self, hwnd, msg, wparam, lparam):
+        try:
+            if msg == self.WM_NCHITTEST:
+                if self._hit(self.hwnd, lparam) != self.HT["client"]:
+                    return -1  # HTTRANSPARENT — пусть решает рамка
+                return self.HT["client"]
+        except Exception:
+            pass
+        return self.u32.CallWindowProcW(self._cold, hwnd, msg, wparam, lparam)
+
+    def _hit(self, hwnd, lparam):
+        x = ctypes.c_short(lparam & 0xFFFF).value
+        y = ctypes.c_short((lparam >> 16) & 0xFFFF).value
+        rc = (ctypes.c_long * 4)()
+        self.u32.GetWindowRect(hwnd, ctypes.byref(rc))
+        b = self.border
+        zoomed = self.u32.IsZoomed(hwnd)
+        if not zoomed:
+            left, right = x < rc[0] + b, x >= rc[2] - b
+            top, bottom = y < rc[1] + b, y >= rc[3] - b
+            if top and left:
+                return self.HT["topleft"]
+            if top and right:
+                return self.HT["topright"]
+            if bottom and left:
+                return self.HT["bottomleft"]
+            if bottom and right:
+                return self.HT["bottomright"]
+            if left:
+                return self.HT["left"]
+            if right:
+                return self.HT["right"]
+            if top:
+                return self.HT["top"]
+            if bottom:
+                return self.HT["bottom"]
+        pad = (self.u32.GetSystemMetrics(32) + self.u32.GetSystemMetrics(92)) if zoomed else 0
+        if y < rc[1] + pad + self.bar_h:
+            # над кнопками — клиент; над пустым местом панели, логотипом и названием — заголовок (тянуть, двойной клик)
+            cur = self.app.winfo_containing(x, y)
+            while cur is not None and cur is not self.app.titlebar:
+                if isinstance(cur, GhostButton):
+                    return self.HT["client"]
+                cur = cur.master
+            return self.HT["caption"] if cur is self.app.titlebar else self.HT["client"]
+        return self.HT["client"]
 
     def _wndproc(self, hwnd, msg, wparam, lparam):
         try:
@@ -1437,41 +1491,7 @@ class CustomFrame:
                     rc[3] -= pad
                 return 0
             if msg == self.WM_NCHITTEST:
-                x = ctypes.c_short(lparam & 0xFFFF).value
-                y = ctypes.c_short((lparam >> 16) & 0xFFFF).value
-                rc = (ctypes.c_long * 4)()
-                self.u32.GetWindowRect(hwnd, ctypes.byref(rc))
-                b = self.border
-                zoomed = self.u32.IsZoomed(hwnd)
-                if not zoomed:
-                    left, right = x < rc[0] + b, x >= rc[2] - b
-                    top, bottom = y < rc[1] + b, y >= rc[3] - b
-                    if top and left:
-                        return self.HT["topleft"]
-                    if top and right:
-                        return self.HT["topright"]
-                    if bottom and left:
-                        return self.HT["bottomleft"]
-                    if bottom and right:
-                        return self.HT["bottomright"]
-                    if left:
-                        return self.HT["left"]
-                    if right:
-                        return self.HT["right"]
-                    if top:
-                        return self.HT["top"]
-                    if bottom:
-                        return self.HT["bottom"]
-                pad = (self.u32.GetSystemMetrics(32) + self.u32.GetSystemMetrics(92)) if zoomed else 0
-                if y < rc[1] + pad + self.bar_h:
-                    # над кнопками — клиент; над пустым местом панели, логотипом и названием — заголовок (тянуть, двойной клик)
-                    cur = self.app.winfo_containing(x, y)
-                    while cur is not None and cur is not self.app.titlebar:
-                        if isinstance(cur, GhostButton):
-                            return self.HT["client"]
-                        cur = cur.master
-                    return self.HT["caption"] if cur is self.app.titlebar else self.HT["client"]
-                return self.HT["client"]
+                return self._hit(hwnd, lparam)
         except Exception:
             pass
         return self.u32.CallWindowProcW(self._old, hwnd, msg, wparam, lparam)
@@ -2852,6 +2872,15 @@ class App(ctk.CTk):
         bar.grid_propagate(False)
         self.titlebar = bar
         if self.custom_frame_on():
+            def _drag(e):
+                try:
+                    u32 = ctypes.windll.user32
+                    u32.ReleaseCapture()
+                    u32.SendMessageW(u32.GetParent(self.winfo_id()), 0x00A1, 2, 0)  # WM_NCLBUTTONDOWN, HTCAPTION
+                except Exception:
+                    pass
+            bar.bind("<ButtonPress-1>", _drag)
+            bar.bind("<Double-Button-1>", lambda e: self.toggle_max())
             # кнопки окна в стиле приложения: свернуть / развернуть / закрыть
             wb = ctk.CTkFrame(bar, fg_color="transparent")
             wb.pack(side="right", padx=(0, 10), pady=7)
