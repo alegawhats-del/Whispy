@@ -1,6 +1,6 @@
 {
-  "version": "2.8.2",
+  "version": "2.8.3",
   "date": "2026-11-07",
-  "notes": "• Рамка в стиле Whispy: исправлено перетаскивание окна за верхнюю панель (двойной клик — развернуть), растягивание за края",
-  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.8.2/Whispy-Setup-2.8.2.exe"
+  "notes": "• В блоке ИИ показываются только подключённые провайдеры (свой или встроенный ключ) и Pollinations; «＋ Добавить ИИ…» открывает настройки\n• Если текущий ИИ без ключа — приложение само переключится на подключённый",
+  "setup": "https://github.com/alegawhats-del/Whispy/releases/download/v2.8.3/Whispy-Setup-2.8.3.exe"
 }
