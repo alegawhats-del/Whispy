@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.8.4"
+APP_VERSION = "2.8.5"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -144,6 +144,25 @@ LANGS = {"Русский": "ru", "Українська": "uk", "English": "en", 
 MODELS = ["small", "medium", "large-v3"]
 DEVICES = {"Авто": "auto", "NVIDIA": "gpu", "CPU": "cpu"}
 SPEED = {"Быстро": 1, "Точно": 5}
+# Нагрузка на ПК: (доля ядер, класс приоритета процесса Windows). Ниже приоритет — другие программы получают процессор первыми.
+LOAD = {"Тихо": (0.5, 0x00000040), "Сбалансировано": (0.85, 0x00004000), "Максимум": (1.0, 0x00000020)}  # IDLE / BELOW_NORMAL / NORMAL
+
+
+def cpu_threads_for(load):
+    frac = LOAD.get(load, LOAD["Сбалансировано"])[0]
+    n = os.cpu_count() or 4
+    return max(1, min(n, int(n * frac) if frac < 1 else n) - (1 if load == "Сбалансировано" else 0))
+
+
+def set_process_priority(load):
+    """Приоритет всего процесса на время работы: Windows отдаёт процессор другим задачам в первую очередь."""
+    if sys.platform != "win32":
+        return
+    try:
+        k32 = ctypes.windll.kernel32
+        k32.SetPriorityClass(k32.GetCurrentProcess(), LOAD.get(load, LOAD["Сбалансировано"])[1])
+    except Exception:
+        pass
 SPEAKERS = {"Выкл": -1, "Авто": 0, "2": 2, "3": 3, "4": 4}
 AI_TYPES = ["Тезисы", "Таблица", "Блок-схема", "Презентация", "Инфографика"]
 # Провайдеры ИИ: (протокол, адрес, модель по умолчанию, нужен ли ключ, ссылка где взять ключ)
@@ -1977,12 +1996,12 @@ class Cancelled(Exception):
 
 
 class Worker(threading.Thread):
-    def __init__(self, app, url, lang, model_name, device_choice, beam, speakers, gen):
+    def __init__(self, app, url, lang, model_name, device_choice, beam, speakers, gen, load="Сбалансировано"):
         super().__init__(daemon=True)
         self.app = app
         self.q = app.q
         self.url, self.lang, self.model_name, self.device_choice = url, lang, model_name, device_choice
-        self.beam, self.speakers, self.gen = beam, speakers, gen
+        self.beam, self.speakers, self.gen, self.load = beam, speakers, gen, load
         self.cancel = threading.Event()
         self.lines = []  # [start, end, text, (speaker)]
 
@@ -2058,6 +2077,7 @@ class Worker(threading.Thread):
             self.status("Ошибка", "Что-то пошло не так.")
             self.emit("error", text=human_error(e))
         finally:
+            set_process_priority("Максимум")  # вернуть обычный приоритет процессу
             if audio_path:
                 try:
                     os.remove(audio_path)
@@ -2193,7 +2213,8 @@ class Worker(threading.Thread):
         dev_name = "NVIDIA" if device == "cuda" else "CPU"
         self.status("Модель", f"Загружаю {self.model_name} ({dev_name})…" + ("" if model_cached(self.model_name) else " первый раз скачивается"))
         self.emit("indeterminate", on=True)
-        threads = max(1, (os.cpu_count() or 4))
+        threads = cpu_threads_for(self.load)
+        set_process_priority(self.load)
         try:
             model = WhisperModel(self.model_name, device=device, compute_type=compute, download_root=MODELS_DIR, cpu_threads=threads)
         except Exception as e:  # noqa: BLE001
@@ -2244,7 +2265,7 @@ class Worker(threading.Thread):
         import sherpa_onnx
         from faster_whisper.audio import decode_audio
         wav = decode_audio(audio_path, sampling_rate=16000)
-        cfg = sherpa_onnx.SpeakerEmbeddingExtractorConfig(model=SPK_MODEL_PATH, num_threads=max(1, (os.cpu_count() or 4) // 2), provider="cpu")
+        cfg = sherpa_onnx.SpeakerEmbeddingExtractorConfig(model=SPK_MODEL_PATH, num_threads=max(1, cpu_threads_for(self.load) // 2 + 1), provider="cpu")
         ext = sherpa_onnx.SpeakerEmbeddingExtractor(cfg)
         embs = []
         n = len(self.lines)
@@ -2621,9 +2642,10 @@ class App(ctk.CTk):
         self.model_var = tk.StringVar(value=self.settings.get("model", "medium"))
         self.device_var = tk.StringVar(value=self.settings.get("device", "Авто"))
         self.speed_var = tk.StringVar(value=self.settings.get("speed", "Быстро"))
+        self.load_var = tk.StringVar(value=self.settings.get("load", "Сбалансировано"))
         self.spk_var = tk.StringVar(value=self.settings.get("speakers", "Выкл"))
         self.ai_var = tk.StringVar(value=self.settings.get("ai_type", "Тезисы"))
-        for v in (self.lang_var, self.model_var, self.device_var, self.speed_var, self.spk_var, self.ai_var):
+        for v in (self.lang_var, self.model_var, self.device_var, self.speed_var, self.spk_var, self.ai_var, self.load_var):
             v.trace_add("write", lambda *a: self.persist())
         self._chips = {}
         self.ai_cfg = self.settings.get("ai", {}) or {}
@@ -2779,7 +2801,7 @@ class App(ctk.CTk):
 
     def persist(self):
         self.settings.update({"theme": self.theme, "lang": self.lang_var.get(), "model": self.model_var.get(),
-                              "device": self.device_var.get(), "speed": self.speed_var.get(), "speakers": self.spk_var.get(),
+                              "device": self.device_var.get(), "speed": self.speed_var.get(), "speakers": self.spk_var.get(), "load": self.load_var.get(),
                               "ai_type": self.ai_var.get(), "ai": self.ai_cfg})
         self.settings.pop("api_key", None)
         try:
@@ -2996,13 +3018,14 @@ class App(ctk.CTk):
         opts.grid(row=2, column=0, sticky="ew", padx=22, pady=(14, 4))
         for label, var, values in [("ЯЗЫК", self.lang_var, list(LANGS.keys())), ("МОДЕЛЬ", self.model_var, MODELS),
                                    ("УСТРОЙСТВО", self.device_var, list(DEVICES.keys())), ("РЕЖИМ", self.speed_var, list(SPEED.keys())),
-                                   ("СПИКЕРЫ", self.spk_var, list(SPEAKERS.keys()))]:
+                                   ("СПИКЕРЫ", self.spk_var, list(SPEAKERS.keys())), ("НАГРУЗКА НА ПК", self.load_var, list(LOAD.keys()))]:
             box = ctk.CTkFrame(opts, fg_color="transparent")
             self.label(box, label).pack(anchor="w", pady=(0, 6))
             self.seg(box, values, var).pack(anchor="w")
             opts.add(box)
         self.hint(card, "small — быстро · medium — баланс · large-v3 — максимум качества (нужна NVIDIA)   ·   "
-                        "«Точно» медленнее в 2–3 раза   ·   Спикеры — кто говорит в подкасте",
+                        "«Точно» медленнее в 2–3 раза   ·   Спикеры — кто говорит в подкасте   ·   "
+                        "Нагрузка: «Тихо» — ПК свободен для других задач, «Максимум» — быстрее всего",
                   row=3, column=0, sticky="ew", padx=22, pady=(0, 18))
 
         prog = self.page.add(GlassCard(self.page)).body
@@ -3280,7 +3303,7 @@ class App(ctk.CTk):
         self.status_lbl.configure(text="Подключаюсь к YouTube…", text_color=T["TEXT"])
         self.gen += 1
         self.worker = Worker(self, url, LANGS[self.lang_var.get()], self.model_var.get(), DEVICES[self.device_var.get()],
-                             SPEED[self.speed_var.get()], SPEAKERS[self.spk_var.get()], self.gen)
+                             SPEED[self.speed_var.get()], SPEAKERS[self.spk_var.get()], self.gen, load=self.load_var.get())
         self.worker.start()
         self.refresh_buttons()
 
