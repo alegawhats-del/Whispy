@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.8.5"
+APP_VERSION = "2.8.6"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -1403,132 +1403,123 @@ def _transparent(win):
     return False
 
 
-class CustomFrame:
-    """Своя рамка окна на Windows (экспериментально). Системный заголовок убираем через WM_NCCALCSIZE; перетаскивание,
-    прилипание, двойной клик и растягивание за края — родные через WM_NCHITTEST. Внутри оконной процедуры — только
-    арифметика и WinAPI: никаких вызовов Tk (это и роняло приложение). Зоны кнопок панели кэшируются из Tk-потока."""
-    WM_NCCALCSIZE, WM_NCHITTEST = 0x0083, 0x0084
-    HT = {"client": 1, "caption": 2, "left": 10, "right": 11, "top": 12, "topleft": 13, "topright": 14, "bottom": 15, "bottomleft": 16, "bottomright": 17}
+class Frameless:
+    """Окно без системной рамки (экспериментально): overrideredirect + возврат в панель задач, перетаскивание за панель
+    родным движением Windows (WM_NCLBUTTONDOWN), грипы для растягивания, тень и скругления через DWM.
+    Никаких оконных процедур на Python — падать нечему."""
 
-    def __init__(self, app, bar_height=44, border=6):
-        self.app, self.bar_h, self.border = app, bar_height, border
+    def __init__(self, app):
+        self.app = app
         self.ok = False
-        self.client_rects = []  # экранные прямоугольники интерактивных элементов панели (кнопки меню, кнопки окна)
+        self._saved_geo = None
         if sys.platform != "win32":
             return
         try:
-            import ctypes.wintypes as wt
             self.u32 = ctypes.windll.user32
-            LRESULT, WPARAM, LPARAM = ctypes.c_ssize_t, ctypes.c_size_t, ctypes.c_ssize_t
-            self.u32.GetParent.restype = ctypes.c_void_p
-            self.u32.GetParent.argtypes = [ctypes.c_void_p]
-            self.u32.SetWindowLongPtrW.restype = ctypes.c_ssize_t
-            self.u32.SetWindowLongPtrW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_ssize_t]
-            self.u32.CallWindowProcW.restype = LRESULT
-            self.u32.CallWindowProcW.argtypes = [ctypes.c_ssize_t, ctypes.c_void_p, wt.UINT, WPARAM, LPARAM]
-            self.u32.GetWindowRect.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-            self.u32.IsZoomed.argtypes = [ctypes.c_void_p]
-            self.u32.SetWindowPos.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wt.UINT]
-            self.PROC = ctypes.WINFUNCTYPE(LRESULT, ctypes.c_void_p, wt.UINT, WPARAM, LPARAM)
-            self.child = app.winfo_id()
-            self.hwnd = self.u32.GetParent(self.child)
-            if not self.hwnd:
-                return
-            self._proc = self.PROC(self._wndproc)    # ссылки держим — иначе сборщик мусора убьёт колбэки
-            self._cproc = self.PROC(self._childproc)
-            self._old = self.u32.SetWindowLongPtrW(self.hwnd, -4, ctypes.cast(self._proc, ctypes.c_void_p).value)
-            if not self._old:
-                return
-            self._cold = self.u32.SetWindowLongPtrW(self.child, -4, ctypes.cast(self._cproc, ctypes.c_void_p).value)
-            self.u32.SetWindowPos(self.hwnd, None, 0, 0, 0, 0, 0x0020 | 0x0002 | 0x0001 | 0x0004)  # FRAMECHANGED|NOMOVE|NOSIZE|NOZORDER
+            app.overrideredirect(True)
+            app.update_idletasks()
+            self.hwnd = self._hwnd()
+            # вернуть окно в панель задач (без этого overrideredirect-окно из неё пропадает)
+            GWL_EXSTYLE, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW = -20, 0x00040000, 0x00000080
+            st = self.u32.GetWindowLongW(self.hwnd, GWL_EXSTYLE)
+            self.u32.SetWindowLongW(self.hwnd, GWL_EXSTYLE, (st | WS_EX_APPWINDOW) & ~WS_EX_TOOLWINDOW)
+            try:  # тень и скругление
+                class MARGINS(ctypes.Structure):
+                    _fields_ = [("l", ctypes.c_int), ("r", ctypes.c_int), ("t", ctypes.c_int), ("b", ctypes.c_int)]
+                ctypes.windll.dwmapi.DwmExtendFrameIntoClientArea(self.hwnd, ctypes.byref(MARGINS(1, 1, 1, 1)))
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(self.hwnd, 33, ctypes.byref(ctypes.c_int(2)), 4)
+            except Exception:
+                pass
+            app.withdraw()
+            app.after(10, app.deiconify)
+            app.bind("<Map>", self._on_map, add="+")
+            self._grips()
             self.ok = True
         except Exception:
-            self.ok = False
-
-    def update_zones(self, widgets):
-        """Вызывается из Tk-потока: запоминаем экранные зоны кнопок панели, над которыми клики — клиентские."""
-        rects = []
-        for w in widgets:
             try:
-                if not w.winfo_ismapped():
-                    continue
-                x, y = w.winfo_rootx(), w.winfo_rooty()
-                rects.append((x, y, x + w.winfo_width(), y + w.winfo_height()))
+                app.overrideredirect(False)
             except Exception:
                 pass
-        self.client_rects = rects
+            self.ok = False
+
+    def _hwnd(self):
+        h = self.u32.GetParent(self.app.winfo_id())
+        return h or self.app.winfo_id()
+
+    def _on_map(self, e=None):
+        # после сворачивания/разворачивания Tk иногда возвращает системную рамку — держим без неё
+        try:
+            if not self.app.overrideredirect():
+                self.app.overrideredirect(True)
+        except Exception:
+            pass
+
+    # --- действия ---
+    def drag(self, e=None):
+        try:
+            self.u32.ReleaseCapture()
+            self.u32.SendMessageW(self._hwnd(), 0x00A1, 2, 0)  # WM_NCLBUTTONDOWN, HTCAPTION — родное перемещение
+        except Exception:
+            pass
+
+    def minimize(self):
+        try:
+            self.u32.ShowWindow(self._hwnd(), 6)  # SW_MINIMIZE
+        except Exception:
+            self.app.iconify()
+
+    def is_max(self):
+        return self._saved_geo is not None
+
+    def toggle_max(self):
+        if self.is_max():
+            self.app.geometry(self._saved_geo)
+            self._saved_geo = None
+        else:
+            self._saved_geo = self.app.geometry()
+            rc = (ctypes.c_long * 4)()
+            self.u32.SystemParametersInfoW(48, 0, ctypes.byref(rc), 0)  # SPI_GETWORKAREA — не перекрываем панель задач
+            self.app.geometry(f"{rc[2] - rc[0]}x{rc[3] - rc[1]}+{rc[0]}+{rc[1]}")
+        self.app.after(30, self.app._sync_max_icon)
 
     def restore_native(self):
-        if self.ok:
-            try:
-                if getattr(self, "_cold", 0):
-                    self.u32.SetWindowLongPtrW(self.child, -4, self._cold)
-                self.u32.SetWindowLongPtrW(self.hwnd, -4, self._old)
-                self.u32.SetWindowPos(self.hwnd, None, 0, 0, 0, 0, 0x0020 | 0x0002 | 0x0001 | 0x0004)
-            except Exception:
-                pass
-            self.ok = False
-
-    def _pad(self, hwnd):
-        return (self.u32.GetSystemMetrics(32) + self.u32.GetSystemMetrics(92)) if self.u32.IsZoomed(hwnd) else 0
-
-    def _hit(self, lparam):
-        x = ctypes.c_short(lparam & 0xFFFF).value
-        y = ctypes.c_short((lparam >> 16) & 0xFFFF).value
-        rc = (ctypes.c_long * 4)()
-        self.u32.GetWindowRect(self.hwnd, ctypes.byref(rc))
-        b = self.border
-        zoomed = self.u32.IsZoomed(self.hwnd)
-        if not zoomed:
-            left, right = x < rc[0] + b, x >= rc[2] - b
-            top, bottom = y < rc[1] + b, y >= rc[3] - b
-            if top and left:
-                return self.HT["topleft"]
-            if top and right:
-                return self.HT["topright"]
-            if bottom and left:
-                return self.HT["bottomleft"]
-            if bottom and right:
-                return self.HT["bottomright"]
-            if left:
-                return self.HT["left"]
-            if right:
-                return self.HT["right"]
-            if top:
-                return self.HT["top"]
-            if bottom:
-                return self.HT["bottom"]
-        if y < rc[1] + self._pad(self.hwnd) + self.bar_h:
-            for x1, y1, x2, y2 in self.client_rects:
-                if x1 <= x < x2 and y1 <= y < y2:
-                    return self.HT["client"]
-            return self.HT["caption"]
-        return self.HT["client"]
-
-    def _childproc(self, hwnd, msg, wparam, lparam):
         try:
-            if msg == self.WM_NCHITTEST:
-                return -1 if self._hit(lparam) != self.HT["client"] else self.HT["client"]  # -1 = HTTRANSPARENT → решает рамка
+            self.app.unbind("<Map>")
+            for g in getattr(self, "_grip_widgets", []):
+                g.destroy()
+            self.app.overrideredirect(False)
+            self.app.withdraw()
+            self.app.after(10, self.app.deiconify)
         except Exception:
             pass
-        return self.u32.CallWindowProcW(self._cold, hwnd, msg, wparam, lparam)
+        self.ok = False
 
-    def _wndproc(self, hwnd, msg, wparam, lparam):
-        try:
-            if msg == self.WM_NCCALCSIZE and wparam:
-                if self.u32.IsZoomed(hwnd):  # в развёрнутом виде Windows прячет рамку за край экрана — компенсируем
-                    rc = ctypes.cast(lparam, ctypes.POINTER(ctypes.c_long * 4)).contents
-                    pad = self.u32.GetSystemMetrics(32) + self.u32.GetSystemMetrics(92)
-                    rc[0] += pad
-                    rc[1] += pad
-                    rc[2] -= pad
-                    rc[3] -= pad
-                return 0
-            if msg == self.WM_NCHITTEST:
-                return self._hit(lparam)
-        except Exception:
-            pass
-        return self.u32.CallWindowProcW(self._old, hwnd, msg, wparam, lparam)
+    # --- растягивание за правый/нижний край и угол ---
+    def _grips(self):
+        app = self.app
+        self._grip_widgets = []
+        for side, cursor in (("right", "size_we"), ("bottom", "size_ns"), ("corner", "size_nw_se")):
+            g = tk.Frame(app, bg=T["BG"], cursor=cursor)
+            if side == "right":
+                g.place(relx=1.0, x=-6, y=0, width=6, relheight=1.0)
+            elif side == "bottom":
+                g.place(x=0, rely=1.0, y=-6, relwidth=1.0, height=6)
+            else:
+                g.place(relx=1.0, rely=1.0, x=-14, y=-14, width=14, height=14)
+            g.bind("<ButtonPress-1>", lambda e, sd=side: self._start(e, sd))
+            g.bind("<B1-Motion>", self._resize)
+            g.lift()
+            self._grip_widgets.append(g)
+
+    def _start(self, e, side):
+        self._rs = (side, e.x_root, e.y_root, self.app.winfo_width(), self.app.winfo_height())
+
+    def _resize(self, e):
+        side, x0, y0, w0, h0 = self._rs
+        w = w0 + (e.x_root - x0) if side in ("right", "corner") else w0
+        h = h0 + (e.y_root - y0) if side in ("bottom", "corner") else h0
+        mw, mh = self.app.minsize()
+        self.app.geometry(f"{max(mw, w)}x{max(mh, h)}")
 
 
 class Panel(tk.Toplevel):
@@ -2685,58 +2676,43 @@ class App(ctk.CTk):
     def _install_frame(self):
         self.win_frame = getattr(self, "win_frame", None)
         if self.custom_frame_on() and (self.win_frame is None or not self.win_frame.ok):
-            self.win_frame = CustomFrame(self, bar_height=44)
+            self.win_frame = Frameless(self)
             if not self.win_frame.ok and hasattr(self, "win_btns"):
                 for b in self.win_btns.values():
                     b.pack_forget()
-            elif self.win_frame.ok:
-                self._zoomed = None
-                self.bind("<Configure>", self._sync_max_icon, add="+")
-                self.after(100, self._update_frame_zones)
         elif not self.custom_frame_on() and self.win_frame is not None and self.win_frame.ok:
             self.win_frame.restore_native()
 
-    def _update_frame_zones(self):
-        """Зоны кнопок панели для своей рамки — пересчитываем из Tk-потока, периодически и дёшево."""
-        fr = getattr(self, "win_frame", None)
-        if not (fr and fr.ok) or not self.winfo_exists():
-            return
-        widgets = list(getattr(self, "menu_btns", {}).values()) + [getattr(self, "files_btn", None), getattr(self, "theme_btn", None)] \
-            + list(getattr(self, "win_btns", {}).values())
-        fr.update_zones([w for w in widgets if w is not None])
-        self.after(500, self._update_frame_zones)
-
     def _sync_max_icon(self, e=None):
         try:
-            z = bool(ctypes.windll.user32.IsZoomed(ctypes.windll.user32.GetParent(self.winfo_id())))
-            if z != self._zoomed and hasattr(self, "win_btns"):
-                self._zoomed = z
-                self.win_btns["max"].set_icon("restore" if z else "maximize")
+            fr = getattr(self, "win_frame", None)
+            if fr and fr.ok and hasattr(self, "win_btns"):
+                self.win_btns["max"].set_icon("restore" if fr.is_max() else "maximize")
         except Exception:
             pass
 
     def minimize(self):
-        try:
-            ctypes.windll.user32.ShowWindow(ctypes.windll.user32.GetParent(self.winfo_id()), 6)  # SW_MINIMIZE
-        except Exception:
+        fr = getattr(self, "win_frame", None)
+        if fr and fr.ok:
+            fr.minimize()
+        else:
             self.iconify()
 
     def toggle_max(self):
-        try:
-            u32 = ctypes.windll.user32
-            hwnd = u32.GetParent(self.winfo_id())
-            zoomed = u32.IsZoomed(hwnd)
-            u32.ShowWindow(hwnd, 9 if zoomed else 3)  # SW_RESTORE / SW_MAXIMIZE
-            if hasattr(self, "win_btns"):
-                self.win_btns["max"].set_icon("maximize" if zoomed else "restore")
-        except Exception:
-            self.state("normal" if self.state() == "zoomed" else "zoomed")
+        fr = getattr(self, "win_frame", None)
+        if fr and fr.ok:
+            fr.toggle_max()
+        else:
+            try:
+                self.state("normal" if self.state() == "zoomed" else "zoomed")
+            except Exception:
+                pass
 
     def toggle_frame(self):
         self.settings["custom_frame"] = not self.settings.get("custom_frame", False)
         self.persist()
-        self._install_frame()
         self.build()
+        self._install_frame()
         self.dark_titlebar()
 
     def set_icon(self):
@@ -2935,15 +2911,6 @@ class App(ctk.CTk):
         bar.grid_propagate(False)
         self.titlebar = bar
         if self.custom_frame_on():
-            def _drag(e):
-                try:
-                    u32 = ctypes.windll.user32
-                    u32.ReleaseCapture()
-                    u32.SendMessageW(u32.GetParent(self.winfo_id()), 0x00A1, 2, 0)  # WM_NCLBUTTONDOWN, HTCAPTION
-                except Exception:
-                    pass
-            bar.bind("<ButtonPress-1>", _drag)
-            bar.bind("<Double-Button-1>", lambda e: self.toggle_max())
             # кнопки окна в стиле приложения: свернуть / развернуть / закрыть
             wb = ctk.CTkFrame(bar, fg_color="transparent")
             wb.pack(side="right", padx=(0, 10), pady=7)
@@ -2958,10 +2925,21 @@ class App(ctk.CTk):
         lg = logo_image(20)
         if lg is not None:
             self._bar_logo = ImageTk.PhotoImage(lg)
-            tk.Label(bar, image=self._bar_logo, bg=T["BG"], bd=0).pack(side="left", padx=(24, 8), pady=12)
+            self.logo_lbl = tk.Label(bar, image=self._bar_logo, bg=T["BG"], bd=0)
+            self.logo_lbl.pack(side="left", padx=(24, 8), pady=12)
         else:
-            ctk.CTkLabel(bar, text="", width=10, height=10, corner_radius=5, fg_color=T["PINK"]).pack(side="left", padx=(24, 8), pady=17)
-        ctk.CTkLabel(bar, text="Whispy", text_color=T["TEXT"], font=ctk.CTkFont(family=UI_FONT, size=13, weight="bold")).pack(side="left", padx=(0, 18))
+            self.logo_lbl = ctk.CTkLabel(bar, text="", width=10, height=10, corner_radius=5, fg_color=T["PINK"])
+            self.logo_lbl.pack(side="left", padx=(24, 8), pady=17)
+        self.title_lbl_bar = ctk.CTkLabel(bar, text="Whispy", text_color=T["TEXT"], font=ctk.CTkFont(family=UI_FONT, size=13, weight="bold"))
+        self.title_lbl_bar.pack(side="left", padx=(0, 18))
+        if self.custom_frame_on():
+            def _drag(e):
+                fr = getattr(self, "win_frame", None)
+                if fr and fr.ok:
+                    fr.drag()
+            for w in (bar, self.logo_lbl, self.title_lbl_bar):
+                w.bind("<ButtonPress-1>", _drag)
+                w.bind("<Double-Button-1>", lambda e: self.toggle_max())
         self.menu_btns = {}
         for name in ("Файл", "Правка", "Вид", "ИИ", "Помощь"):
             b = GhostButton(bar, name, lambda n=name: self.open_menu(n, self.menu_btns[n]), width=74, height=30, bg=T["BG"],
