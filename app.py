@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.8.3"
+APP_VERSION = "2.8.4"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -1385,41 +1385,59 @@ def _transparent(win):
 
 
 class CustomFrame:
-    """Своя рамка окна на Windows: системный заголовок убираем через WM_NCCALCSIZE, а перетаскивание, прилипание к краям,
-    двойной клик и изменение размера за края остаются родными (WM_NCHITTEST). Если что-то не так — остаётся системная рамка."""
+    """Своя рамка окна на Windows (экспериментально). Системный заголовок убираем через WM_NCCALCSIZE; перетаскивание,
+    прилипание, двойной клик и растягивание за края — родные через WM_NCHITTEST. Внутри оконной процедуры — только
+    арифметика и WinAPI: никаких вызовов Tk (это и роняло приложение). Зоны кнопок панели кэшируются из Tk-потока."""
     WM_NCCALCSIZE, WM_NCHITTEST = 0x0083, 0x0084
     HT = {"client": 1, "caption": 2, "left": 10, "right": 11, "top": 12, "topleft": 13, "topright": 14, "bottom": 15, "bottomleft": 16, "bottomright": 17}
 
     def __init__(self, app, bar_height=44, border=6):
         self.app, self.bar_h, self.border = app, bar_height, border
         self.ok = False
+        self.client_rects = []  # экранные прямоугольники интерактивных элементов панели (кнопки меню, кнопки окна)
         if sys.platform != "win32":
             return
         try:
             import ctypes.wintypes as wt
             self.u32 = ctypes.windll.user32
-            self.hwnd = self.u32.GetParent(app.winfo_id())
             LRESULT, WPARAM, LPARAM = ctypes.c_ssize_t, ctypes.c_size_t, ctypes.c_ssize_t
-            self.PROC = ctypes.WINFUNCTYPE(LRESULT, wt.HWND, wt.UINT, WPARAM, LPARAM)
+            self.u32.GetParent.restype = ctypes.c_void_p
+            self.u32.GetParent.argtypes = [ctypes.c_void_p]
             self.u32.SetWindowLongPtrW.restype = ctypes.c_ssize_t
-            self.u32.SetWindowLongPtrW.argtypes = [wt.HWND, ctypes.c_int, ctypes.c_ssize_t]
+            self.u32.SetWindowLongPtrW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_ssize_t]
             self.u32.CallWindowProcW.restype = LRESULT
-            self.u32.CallWindowProcW.argtypes = [ctypes.c_ssize_t, wt.HWND, wt.UINT, WPARAM, LPARAM]
-            self.u32.DefWindowProcW.restype = LRESULT
-            self.u32.DefWindowProcW.argtypes = [wt.HWND, wt.UINT, WPARAM, LPARAM]
-            self._proc = self.PROC(self._wndproc)  # держим ссылку — иначе сборщик мусора убьёт колбэк
+            self.u32.CallWindowProcW.argtypes = [ctypes.c_ssize_t, ctypes.c_void_p, wt.UINT, WPARAM, LPARAM]
+            self.u32.GetWindowRect.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+            self.u32.IsZoomed.argtypes = [ctypes.c_void_p]
+            self.u32.SetWindowPos.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wt.UINT]
+            self.PROC = ctypes.WINFUNCTYPE(LRESULT, ctypes.c_void_p, wt.UINT, WPARAM, LPARAM)
+            self.child = app.winfo_id()
+            self.hwnd = self.u32.GetParent(self.child)
+            if not self.hwnd:
+                return
+            self._proc = self.PROC(self._wndproc)    # ссылки держим — иначе сборщик мусора убьёт колбэки
+            self._cproc = self.PROC(self._childproc)
             self._old = self.u32.SetWindowLongPtrW(self.hwnd, -4, ctypes.cast(self._proc, ctypes.c_void_p).value)
             if not self._old:
                 return
-            # внутреннее окно Tk принимает клики первым: над панелью и краями оно отвечает «прозрачно» (HTTRANSPARENT),
-            # и Windows отдаёт клик рамке — отсюда родное перетаскивание, прилипание и растягивание
-            self.child = app.winfo_id()
-            self._cproc = self.PROC(self._childproc)
             self._cold = self.u32.SetWindowLongPtrW(self.child, -4, ctypes.cast(self._cproc, ctypes.c_void_p).value)
             self.u32.SetWindowPos(self.hwnd, None, 0, 0, 0, 0, 0x0020 | 0x0002 | 0x0001 | 0x0004)  # FRAMECHANGED|NOMOVE|NOSIZE|NOZORDER
             self.ok = True
         except Exception:
             self.ok = False
+
+    def update_zones(self, widgets):
+        """Вызывается из Tk-потока: запоминаем экранные зоны кнопок панели, над которыми клики — клиентские."""
+        rects = []
+        for w in widgets:
+            try:
+                if not w.winfo_ismapped():
+                    continue
+                x, y = w.winfo_rootx(), w.winfo_rooty()
+                rects.append((x, y, x + w.winfo_width(), y + w.winfo_height()))
+            except Exception:
+                pass
+        self.client_rects = rects
 
     def restore_native(self):
         if self.ok:
@@ -1432,23 +1450,16 @@ class CustomFrame:
                 pass
             self.ok = False
 
-    def _childproc(self, hwnd, msg, wparam, lparam):
-        try:
-            if msg == self.WM_NCHITTEST:
-                if self._hit(self.hwnd, lparam) != self.HT["client"]:
-                    return -1  # HTTRANSPARENT — пусть решает рамка
-                return self.HT["client"]
-        except Exception:
-            pass
-        return self.u32.CallWindowProcW(self._cold, hwnd, msg, wparam, lparam)
+    def _pad(self, hwnd):
+        return (self.u32.GetSystemMetrics(32) + self.u32.GetSystemMetrics(92)) if self.u32.IsZoomed(hwnd) else 0
 
-    def _hit(self, hwnd, lparam):
+    def _hit(self, lparam):
         x = ctypes.c_short(lparam & 0xFFFF).value
         y = ctypes.c_short((lparam >> 16) & 0xFFFF).value
         rc = (ctypes.c_long * 4)()
-        self.u32.GetWindowRect(hwnd, ctypes.byref(rc))
+        self.u32.GetWindowRect(self.hwnd, ctypes.byref(rc))
         b = self.border
-        zoomed = self.u32.IsZoomed(hwnd)
+        zoomed = self.u32.IsZoomed(self.hwnd)
         if not zoomed:
             left, right = x < rc[0] + b, x >= rc[2] - b
             top, bottom = y < rc[1] + b, y >= rc[3] - b
@@ -1468,16 +1479,20 @@ class CustomFrame:
                 return self.HT["top"]
             if bottom:
                 return self.HT["bottom"]
-        pad = (self.u32.GetSystemMetrics(32) + self.u32.GetSystemMetrics(92)) if zoomed else 0
-        if y < rc[1] + pad + self.bar_h:
-            # над кнопками — клиент; над пустым местом панели, логотипом и названием — заголовок (тянуть, двойной клик)
-            cur = self.app.winfo_containing(x, y)
-            while cur is not None and cur is not self.app.titlebar:
-                if isinstance(cur, GhostButton):
+        if y < rc[1] + self._pad(self.hwnd) + self.bar_h:
+            for x1, y1, x2, y2 in self.client_rects:
+                if x1 <= x < x2 and y1 <= y < y2:
                     return self.HT["client"]
-                cur = cur.master
-            return self.HT["caption"] if cur is self.app.titlebar else self.HT["client"]
+            return self.HT["caption"]
         return self.HT["client"]
+
+    def _childproc(self, hwnd, msg, wparam, lparam):
+        try:
+            if msg == self.WM_NCHITTEST:
+                return -1 if self._hit(lparam) != self.HT["client"] else self.HT["client"]  # -1 = HTTRANSPARENT → решает рамка
+        except Exception:
+            pass
+        return self.u32.CallWindowProcW(self._cold, hwnd, msg, wparam, lparam)
 
     def _wndproc(self, hwnd, msg, wparam, lparam):
         try:
@@ -1491,7 +1506,7 @@ class CustomFrame:
                     rc[3] -= pad
                 return 0
             if msg == self.WM_NCHITTEST:
-                return self._hit(hwnd, lparam)
+                return self._hit(lparam)
         except Exception:
             pass
         return self.u32.CallWindowProcW(self._old, hwnd, msg, wparam, lparam)
@@ -2625,7 +2640,7 @@ class App(ctk.CTk):
         self.bind("<Map>", lambda e: ANIM.__setitem__("active", True) if e.widget is self else None)
         self.after(100, self.poll)
         self.after(50, self.dark_titlebar)
-        self.after(50, self._hero_tick)
+        self.after(66, self._hero_tick)
         self.after(600, self.set_icon)
         self.after(30, self._reveal)
         if self.settings.get("auto_update", True):
@@ -2643,7 +2658,7 @@ class App(ctk.CTk):
         self.after(50, self._install_frame)
 
     def custom_frame_on(self):
-        return sys.platform == "win32" and self.settings.get("custom_frame", True)
+        return sys.platform == "win32" and self.settings.get("custom_frame", False)
 
     def _install_frame(self):
         self.win_frame = getattr(self, "win_frame", None)
@@ -2655,8 +2670,19 @@ class App(ctk.CTk):
             elif self.win_frame.ok:
                 self._zoomed = None
                 self.bind("<Configure>", self._sync_max_icon, add="+")
+                self.after(100, self._update_frame_zones)
         elif not self.custom_frame_on() and self.win_frame is not None and self.win_frame.ok:
             self.win_frame.restore_native()
+
+    def _update_frame_zones(self):
+        """Зоны кнопок панели для своей рамки — пересчитываем из Tk-потока, периодически и дёшево."""
+        fr = getattr(self, "win_frame", None)
+        if not (fr and fr.ok) or not self.winfo_exists():
+            return
+        widgets = list(getattr(self, "menu_btns", {}).values()) + [getattr(self, "files_btn", None), getattr(self, "theme_btn", None)] \
+            + list(getattr(self, "win_btns", {}).values())
+        fr.update_zones([w for w in widgets if w is not None])
+        self.after(500, self._update_frame_zones)
 
     def _sync_max_icon(self, e=None):
         try:
@@ -2685,7 +2711,7 @@ class App(ctk.CTk):
             self.state("normal" if self.state() == "zoomed" else "zoomed")
 
     def toggle_frame(self):
-        self.settings["custom_frame"] = not self.settings.get("custom_frame", True)
+        self.settings["custom_frame"] = not self.settings.get("custom_frame", False)
         self.persist()
         self._install_frame()
         self.build()
@@ -2708,9 +2734,15 @@ class App(ctk.CTk):
             value = ctypes.c_int(1 if self.theme == "dark" else 0)
             for attr in (20, 19):
                 ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(value), ctypes.sizeof(value))
-            r, g, b = hex_rgb(T["BG"])
-            color = ctypes.c_int((b << 16) | (g << 8) | r)
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(color), ctypes.sizeof(color))
+            def colorref(hx):
+                r, g, b = hex_rgb(hx)
+                return ctypes.c_int((b << 16) | (g << 8) | r)
+            dwm = ctypes.windll.dwmapi
+            # Windows 11: заголовок и обводка в цвет приложения, скруглённые углы. На Windows 10 эти атрибуты просто игнорируются.
+            dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(colorref(T["BG"])), 4)      # DWMWA_CAPTION_COLOR
+            dwm.DwmSetWindowAttribute(hwnd, 36, ctypes.byref(colorref(T["TEXT"])), 4)    # DWMWA_TEXT_COLOR
+            dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(colorref(T["BORDER"])), 4)  # DWMWA_BORDER_COLOR
+            dwm.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(ctypes.c_int(2)), 4)        # DWMWCP_ROUND
         except Exception:
             pass
 
@@ -2732,8 +2764,16 @@ class App(ctk.CTk):
     def _on_resize(self, e):
         if e.widget is not self:
             return
+        if getattr(self, "_resize_job", None):
+            self.after_cancel(self._resize_job)
+        self._resize_job = self.after(60, self._apply_resize)  # не пересчитываем раскладку на каждом пикселе
+
+    def _apply_resize(self):
+        self._resize_job = None
         try:
-            self.textbox.configure(height=max(220, self.winfo_height() - 760))
+            h = max(220, self.winfo_height() - 760)
+            if int(self.textbox.cget("height")) != h:
+                self.textbox.configure(height=h)
         except Exception:
             pass
 
@@ -2827,8 +2867,8 @@ class App(ctk.CTk):
                 None,
                 ("Окно по умолчанию (1000×920)", lambda: self.geometry("1000x920"), None, "pin"),
                 None,
-                ("Рамка окна в стиле Whispy", self.toggle_frame, "вкл" if self.settings.get("custom_frame", True) else "выкл",
-                 "check" if self.settings.get("custom_frame", True) else None),
+                ("Своя рамка окна (экспериментально)", self.toggle_frame, "вкл" if self.settings.get("custom_frame", False) else "выкл",
+                 "check" if self.settings.get("custom_frame", False) else None),
             ],
             "ИИ": [(f"{k}  →  скопировать промпт + текст", (lambda k=k: self.copy_ai_prompt(k)), None, "doc") for k in AI_TYPES] + [
                 None,
@@ -3124,8 +3164,15 @@ class App(ctk.CTk):
         if not ANIM["active"]:
             self.after(200, self._hero_tick)
             return
+        # шапка прокручена наверх и не видна — не трогаем холст вовсе
+        try:
+            if self.page.canvasy(0) > 150:
+                self.after(250, self._hero_tick)
+                return
+        except Exception:
+            pass
         busy = self.worker is not None and self.worker.is_alive()
-        self._hero_phase += 0.28 if busy else 0.06
+        self._hero_phase += 0.36 if busy else 0.08
         h = 140
         for i, (item, x, bw) in enumerate(self._hero_bars):
             if busy:
@@ -3137,7 +3184,7 @@ class App(ctk.CTk):
                 self.hero.coords(item, x, (h - bh) / 2, x + bw, (h + bh) / 2)
             except Exception:
                 break
-        self.after(50, self._hero_tick)
+        self.after(66, self._hero_tick)
 
     def toggle_theme(self):
         self.theme = "light" if self.theme == "dark" else "dark"
