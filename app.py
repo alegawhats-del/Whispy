@@ -26,7 +26,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import font as tkfont
 
-APP_VERSION = "2.8.6"
+APP_VERSION = "2.8.7"
 UPDATE_URL = "https://raw.githubusercontent.com/alegawhats-del/Whispy/main/version.json"
 GITHUB_URL = "https://github.com/alegawhats-del/Whispy"
 
@@ -56,6 +56,29 @@ for _d in (OUT_DIR, MODELS_DIR, SPEAKER_DIR, TEMP_DIR, UPDATES_DIR):
 
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+
+
+CRASH_LOG = os.path.join(DATA_DIR, "crash.log")
+
+
+def _install_crash_log():
+    """Любое падение — в crash.log: сегфолты ловит faulthandler, исключения Python — хуки."""
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        f = open(CRASH_LOG, "a", encoding="utf-8", buffering=1)
+        f.write(f"\n===== Whispy {APP_VERSION} · {datetime.datetime.now():%Y-%m-%d %H:%M:%S} · {sys.platform} =====\n")
+        import faulthandler
+        faulthandler.enable(file=f, all_threads=True)
+
+        def hook(exc_type, exc, tb):
+            import traceback
+            f.write("".join(traceback.format_exception(exc_type, exc, tb)))
+            f.flush()
+        sys.excepthook = hook
+        threading.excepthook = lambda a: hook(a.exc_type, a.exc_value, a.exc_traceback)
+        return f
+    except Exception:
+        return None
 
 
 def _register_dll_dirs():
@@ -2663,6 +2686,16 @@ class App(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
     # ---- системное ----
+    def report_callback_exception(self, exc, val, tb):  # исключения внутри обработчиков Tk — тоже в crash.log
+        import traceback
+        text = "".join(traceback.format_exception(exc, val, tb))
+        try:
+            with open(CRASH_LOG, "a", encoding="utf-8") as f:
+                f.write(text)
+        except Exception:
+            pass
+        sys.stderr.write(text)
+
     def _reveal(self):
         self.update_idletasks()
         self.attributes("-alpha", 1.0)
@@ -2671,7 +2704,7 @@ class App(ctk.CTk):
         self.after(50, self._install_frame)
 
     def custom_frame_on(self):
-        return sys.platform == "win32" and self.settings.get("custom_frame", False)
+        return False  # своя рамка отключена: на Windows падала, а отладить без Windows нельзя — стабильность важнее
 
     def _install_frame(self):
         self.win_frame = getattr(self, "win_frame", None)
@@ -2780,6 +2813,7 @@ class App(ctk.CTk):
                               "device": self.device_var.get(), "speed": self.speed_var.get(), "speakers": self.spk_var.get(), "load": self.load_var.get(),
                               "ai_type": self.ai_var.get(), "ai": self.ai_cfg})
         self.settings.pop("api_key", None)
+        self.settings.pop("custom_frame", None)
         try:
             self.settings["geometry"] = self.geometry()
         except Exception:
@@ -2864,9 +2898,7 @@ class App(ctk.CTk):
                 ("Светлая тема", lambda: self.set_theme("light"), None, "sun"),
                 None,
                 ("Окно по умолчанию (1000×920)", lambda: self.geometry("1000x920"), None, "pin"),
-                None,
-                ("Своя рамка окна (экспериментально)", self.toggle_frame, "вкл" if self.settings.get("custom_frame", False) else "выкл",
-                 "check" if self.settings.get("custom_frame", False) else None),
+
             ],
             "ИИ": [(f"{k}  →  скопировать промпт + текст", (lambda k=k: self.copy_ai_prompt(k)), None, "doc") for k in AI_TYPES] + [
                 None,
@@ -3723,4 +3755,13 @@ if __name__ == "__main__":
         except Exception:
             pass
     ctk.set_default_color_theme("blue")
-    App().mainloop()
+    _crash_log_file = _install_crash_log()
+    try:
+        App().mainloop()
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        if _crash_log_file:
+            _crash_log_file.write(traceback.format_exc())
+            _crash_log_file.flush()
+        raise
